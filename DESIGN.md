@@ -36,6 +36,20 @@ tokens:
       on_accent_dark: "#121310"
       focus_ring_light: "#0DAA26"
       focus_ring_dark: "#84DD00"
+    accent_basket:
+      seed_primary: "#DF8A2D"
+      seed_luminous: "#FACD8F"
+      accent_light: "#DF8A2D"
+      accent_dark: "#FACD8F"
+      accent_strong_light: "#9B5D17"
+      accent_pressed_light: "#C07624"
+      accent_pressed_dark: "#DBB37D"
+      accent_subtle_light: "rgba(223, 138, 45, 0.10)"
+      accent_subtle_dark: "rgba(250, 205, 143, 0.10)"
+      on_accent_light: "#FFFFFF"
+      on_accent_dark: "#121310"
+      focus_ring_light: "#DF8A2D"
+      focus_ring_dark: "#FACD8F"
     glass:
       capsule:
         bg_light: "rgba(255, 255, 255, 0.20)"
@@ -290,6 +304,32 @@ Sourced from index.css (.btn-interactive, .animate-*), tailwind.config.ts (keyfr
 | **Theme Moon Icon** | `hover` | `rotate(-12deg)` (hover:-rotate-12) | `duration-200 ease-out` | Header.tsx |
 | **Select Chevron** | Open state | `rotate(180deg)` (rotate-180) | `duration-200 ease-out` | CustomSelect.tsx |
 
+#### Mini-Physics Engine & Interactive State Mechanics
+
+The Fruit Family user interface applies physically grounded micro-mechanics to convey tactile substance:
+
+1. **Spring-Damper Press Dynamics**:
+   - **Resting State**: `transform: translateY(0) scale(1.0)`, baseline resting shadow elevation.
+   - **Hover Anticipation**: Subtly pre-arms the interaction with an elastic lift: `transform: translateY(-1px) scale(1.015)` using `0.18s cubic-bezier(0.16, 1, 0.3, 1)`.
+   - **Tactile Depression**: On click or touch-down, elements compress: `transform: translateY(0.5px) scale(0.985)` with instantaneous response and zero uncontrolled rebound upon release.
+   - **Flat Primary Action Variant**: When an application implements flat primary buttons, tactile micro-transforms are suppressed (`transform: none`, `box-shadow: none`) to maintain a completely flat, non-distorting silhouette. In this variant, physical confirmation is delivered exclusively through instantaneous solid chromatic shift (`0.15s ease`) paired with the `enter` audio SFX tick.
+2. **Frictionless Magnetic Pill Dynamics**:
+   - The active tab/route indicator pill glides between anchor items with `300ms cubic-bezier(0.2, 0.8, 0.2, 1)` (Web) or `Spring.DampingRatioNoBouncy` with `Spring.StiffnessMediumLow` (Android).
+   - Simulates a magnetic slider snapping over targets with zero overshoot or geometric distortion.
+3. **Switch Thumb Kinetic Travel**:
+   - Switch thumb travels an exact 22dp linear stroke across a 50dp pill track.
+   - Rest gap is strictly 2dp from outer bezel. Driven by low-bouncy spring dynamics (`DampingRatioLowBouncy`) paired with the Android `TextHandleMove` haptic tick or Web `enter` audio click.
+
+#### Stutter-Free 60fps / 120fps Compositing Rules
+
+To guarantee fluid, stutter-free performance across 60Hz and 120Hz ProMotion displays:
+
+1. **Compositor-Only Layer Strategy**: All transitions, page entrance animations, and micro-physics must animate **strictly GPU-accelerated compositing properties**: `transform` (using `translate3d`, `translateY`, `scale`) and `opacity`.
+2. **Strict Layout Reflow Ban**: Never animate geometric layout properties (`width`, `height`, `top`, `left`, `margin`, `padding`) during route switches or state updates. Geometric changes trigger synchronous style recalculation, layout reflow, and paint cycles that cause frame drops and UI stutter.
+3. **Subpixel Glass Stability**: Translucent glass layers (`.glass-capsule`, `.glass-panel`, `.glass-card`) with optical backdrop blurs must declare `transform: translateZ(0)` or `backface-visibility: hidden`. This forces GPU composite layer promotion and prevents subpixel jitter or backdrop re-render hitching during viewport scrolling.
+4. **Lifecycle-Bound `will-change`**: If `will-change: transform, opacity` is applied for complex multi-card entrances, it must be removed upon animation completion to release GPU memory surfaces.
+5. **Frame Budget Discipline**: Strict budget of **16.6ms** (60fps) or **8.3ms** (120fps). JavaScript event handlers (such as scroll or resize listeners) must never execute synchronous DOM measurements that force layout thrashing.
+
 #### Android Jetpack Compose Animation Specs
 
 Sourced directly from CoconutMotion.kt:
@@ -320,7 +360,7 @@ Tactile audio feedback provides subtle physical confirmation for users. Shared a
 2. **Overlap Playback**: Subsequent triggers reset `audio.currentTime = 0` to immediately replay without awaiting audio element termination.
 3. **Scroll Throttling**: Scroll sound calls are strictly throttled by `SCROLL_THROTTLE_MS = 140ms` to prevent acoustic saturation during rapid keyboard strokes.
 4. **Resilient Silent Failure**: All invocations wrap `.play()` in `.catch(() => {})`. If browser autoplay policies block audio, or audio files are absent, execution continues completely silently with zero console warnings or thrown exceptions.
-5. **User-Facing Mute Setting**: Every app must provide a sound toggle (default ON), persisted in `localStorage['fruit_sound_enabled']` (Web) or `SharedPreferences['sound_enabled']` (Android). When disabled, sound triggers exit immediately before attempting audio initialization. Respects system silent / DND modes where platform allows.
+5. **Permanent Ambient Sound (No Header Toggle)**: Tactile audio SFX is an intrinsic ambient layer of the Fruit family experience. The navigation bar chrome must remain uncluttered and bloat-free; applications do NOT expose a sound toggle button in the header. Sound stays permanently active (`isSoundEnabled() => true`). Where a user preferences menu exists in system settings, sound may be globally silenced, but primary navigation chrome is reserved strictly for routing and theme controls.
 
 #### Master Volume & Audio Specification
 
@@ -462,6 +502,13 @@ The deterministic algorithm was run programmatically across all fruit app icons 
 | | `pressed_dark` | `#E5BF14` | theme.py log.warning | `#E2BD10` | dE = 0.0072 | pass |
 | | `on_accent_light` | `#FFFFFF` | theme.py critical text | `#FFFFFF` | dE = 0.0000 | pass |
 | | `subtle_light` | `rgba(249, 118, 140, 0.10)` | theme.py subtle | `rgba(249, 118, 140, 0.10)` | dE = 0.0000 | pass |
+| **Basket** | `accent_light` | `#DF8A2D` | basket-icon.svg flesh | `#DF8A2D` | dE = 0.0000 | pass |
+| | `accent_dark` | `#FACD8F` | basket-icon.svg highlight | `#FACD8F` | dE = 0.0000 | pass |
+| | `accent_strong_light` | `#9B5D17` | formula (L - 0.17) | `#9B5D17` | dE = 0.0000 | pass |
+| | `pressed_light` | `#C07624` | formula (L - 0.076) | `#C07624` | dE = 0.0000 | pass |
+| | `pressed_dark` | `#DBB37D` | formula (L - 0.083) | `#DBB37D` | dE = 0.0000 | pass |
+| | `on_accent_light` | `#FFFFFF` | button label ink (5.27:1) | `#FFFFFF` | dE = 0.0000 | pass |
+| | `subtle_light` | `rgba(223, 138, 45, 0.10)` | bg-basket/10 | `rgba(223, 138, 45, 0.10)` | dE = 0.0000 | pass |
 
 #### Documented Exceptions (Hand-Picked App Tokens)
 
@@ -524,14 +571,38 @@ Forbidden Usages: Generic card backgrounds, card hover borders, secondary button
 
 | Breakpoint | Viewport Width | Navigation Pattern | Layout Max Width | Outer Gutters |
 | :--- | :--- | :--- | :--- | :--- |
-| **Desktop (lg+)** | >= 1024px | Top Floating Glass Capsule (top-3) | max-w-4xl (896px) | px-6 (24px) |
+| **Desktop (Focused Utility)** | >= 1024px | Top Viewport-Fixed Glass Capsule (`top-3`) | max-w-4xl (896px) | px-6 (24px) |
+| **Desktop (Cockpit / Dashboard)** | >= 1024px | Top Viewport-Fixed Glass Capsule (`top-3`) | max-w-7xl (1280px) | px-4 sm:px-6 lg:px-8 |
 | **Tablet (sm to md)** | 640px to 1023px | Top Floating Capsule or Docked Bottom Bar | max-w-2xl (672px) | px-5 (20px) |
 | **Mobile (<sm)** | < 640px | Top Header (top-0) + Floating Bottom Bar (bottom-3) | Full width (100%) | px-4 (16px) |
 
-### 4.2 Insets and Safe Areas
+### 4.2 Viewport-Fixed Stationary Navigation Chrome
 
-- **Desktop**: Pinned floating capsule at `top-3` (12px / 12dp). Content container offsets by `pt-24` (96px).
-- **Android**: Navigation bar wrapped in `Modifier.windowInsetsPadding(WindowInsets.navigationBars)` with vertical padding 12.dp and horizontal padding 24.dp. Status bar padding via `WindowInsets.statusBars`.
+Desktop web navigation is permanently pinned and stationary:
+
+1. **Fixed Viewport Docking**:
+   - Navigation header wrapper declares `position: fixed; top: 0.75rem (12px); left: 0; right: 0; z-index: 50; pointer-events: none;`.
+   - The inner capsule specifies `pointer-events: auto; margin-left: auto; margin-right: auto;` with width matching the app's layout scale (`max-w-4xl` for focused single-column utilities, `max-w-7xl` for expansive dashboards).
+   - The navbar capsule **never scrolls out of view** or moves vertically with page scroll.
+2. **Dedicated Content Top Offset**:
+   - The `<main>` container must declare a top offset padding (`pt-20` / 80px for standard 52px capsules, `pt-24` / 96px for tall capsules).
+   - This guarantees that page titles, hero headers, and top metrics start cleanly below the floating capsule without occlusion or visual clipping.
+3. **Fluid Optical Refraction Beneath Chrome**:
+   - Page content scrolls smoothly *underneath* the stationary translucent glass capsule (`backdrop-filter: blur(15px)`), creating an authentic Apple-grade optical glass depth effect.
+
+### 4.3 Global Keyboard Navigation (Tab & Route Cycling)
+
+All desktop fruit applications must implement global keyboard shortcuts for primary tab and view navigation:
+
+1. **Cycling Shortcuts**:
+   - `Ctrl + ArrowRight` (and `Cmd + ArrowRight` on macOS): Advances circularly to the next primary route/tab (`(currentIndex + 1) % tabs.length`).
+   - `Ctrl + ArrowLeft` (and `Cmd + ArrowLeft` on macOS): Returns circularly to the previous primary route/tab (`(currentIndex - 1 + tabs.length) % tabs.length`).
+2. **Form & Text Input Evasion**:
+   - Global keyboard event listener must inspect the event target before firing.
+   - If `e.target` is an interactive text input (`HTMLInputElement`, `HTMLTextAreaElement`, `HTMLSelectElement`, or `isContentEditable`), shortcut handling is bypassed immediately. Keystrokes pass through untouched to preserve normal text editing and cursor navigation.
+3. **Audio & Motion Integration**:
+   - Every shortcut-driven tab switch triggers the throttled `scroll` audio SFX tick (`SCROLL_THROTTLE_MS = 140ms`).
+   - Glides the 300ms magnetic indicator pill (`motion.pill`) smoothly to the new active tab.
 
 ---
 
@@ -552,6 +623,15 @@ Every component specified across all required states.
 | **Focus** | Two-layer ring (2px #FFFFFF, 4px accent_light) | Two-layer ring (2px #181915, 4px accent_dark) | Two-layer ring | Two-layer ring |
 | **Disabled**| `opacity: 0.45`, `cursor: not-allowed` | `opacity: 0.45`, `cursor: not-allowed` | `opacity: 0.45` | `opacity: 0.45` |
 | **Loading** | `opacity: 0.85`, spinner replaces lead icon | Identical | Identical | Identical |
+
+#### Flat Action Button Standard
+
+When an application specifies flat primary buttons (rather than optical glass with glow shadows):
+- **Background**: Solid flat accent color (e.g. `accent_strong_light` or solid primary token) with zero linear or radial gradients (`background-image: none !important`).
+- **Shadow**: `box-shadow: none !important`. No drop shadows, outer glow halos, or inset bevel lines.
+- **Border**: `border: none !important`. Zero translucent white border rims.
+- **Hover / Active**: Flat solid darkened states (`0.15s ease`) with `transform: none !important` (no translateY lift or depression).
+- **Physical Feedback**: Delivered via instant color transition paired with the tactile `enter` audio SFX tick.
 
 ### 5.2 Toggle Switch (`LemonSwitch`)
 
@@ -597,11 +677,12 @@ Every component specified across all required states.
 
 ### 5.6 Navigation Bar / Floating Capsule (`Header`, `FloatingBottomBar`)
 
-- **Anatomy**: Wordmark logo, router tabs, sliding pill indicator, theme mode toggle.
+- **Anatomy**: Wordmark logo, optional live status badge, primary router tabs, 300ms sliding indicator pill, theme mode toggle (Sun/Moon), and optional utility action (e.g. manual refresh). **No sound toggle button** (sound effects stay permanently enabled; primary navigation chrome remains uncluttered).
 - **Dimensions**:
-  - Desktop: Max width 896px (max-w-4xl), padding px-5 py-2.5, height ~52px, fixed at top-3. Capsule shape 9999px.
+  - Desktop: Max width matches application layout scale (`max-w-4xl` for focused single-column tools, `max-w-7xl` for cockpits/dashboards), padding `px-4 sm:px-6 lg:px-8`, height ~52px, viewport-fixed stationary at `top-3` (`fixed top-3 left-0 right-0 z-50 pointer-events-none` with inner capsule `pointer-events-auto mx-auto`). Capsule shape 9999px.
   - Android: Docked bottom bar with WindowInsets.navigationBars, height (64 * fontScale.coerceIn(1.0f, 1.25f)).dp, RoundedCornerShape(100.dp).
 - **Surface**: `.glass-capsule` (blur(15px), fill 0.20 opacity).
+- **Stationary Viewport Anchoring**: The capsule never scrolls out of the viewport. Page content passes smoothly underneath, visible through the optical backdrop refraction blur.
 - **Active Pill Indicator**: Solid indicator pill (rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900). Glides smoothly with 300ms cubic-bezier(0.2, 0.8, 0.2, 1).
 
 ### 5.7 Tabs / Segmented Control (`CustomSelect`, `LemonSegmentedControl`)
@@ -745,6 +826,15 @@ Concrete rules derived from real code errors and discrepancies found in the code
 - **DON'T** leave glass panels transparent when running on devices without backdrop-filter support.
 - **DO** use `Host Grotesk` for all component UI, forms, and headings.
 - **DON'T** use `Unbounded` for body paragraphs, buttons, form inputs, or tooltips (Unbounded is strictly display-only).
+- **DO** keep the top navigation capsule stationary (`position: fixed; top: 0.75rem`) so it remains docked while page content scrolls fluidly underneath.
+- **DON'T** let the navigation bar scroll out of view or get pushed offscreen.
+- **DO** keep tactile audio sound effects permanently enabled without cluttering the navigation chrome with a sound toggle button.
+- **DON'T** add a dedicated sound toggle button to the top navigation capsule.
+- **DO** wire standardized `Ctrl + ArrowLeft` and `Ctrl + ArrowRight` circular tab navigation shortcuts, evading inputs and textareas.
+- **DON'T** intercept arrow keystrokes when the user is actively typing in text inputs, textareas, or select dropdowns.
+- **DO** guarantee stutter-free 60fps/120fps transitions by animating strictly GPU-composited properties (`transform` and `opacity`).
+- **DON'T** animate geometric layout properties (`width`, `height`, `margin`, `padding`, `top`, `left`) during route transitions.
+- **DO** support strictly flat solid buttons without gradients, bevels, or bright glow shadows when an application specifies flat button styling.
 
 ---
 
@@ -757,7 +847,7 @@ A reviewer or automated test can verify any fruit application against this check
 - [ ] **Surface Fallback**: Non-blurred surfaces fall back to `#FFFFFF` (Light) and `#181915` (Dark).
 - [ ] **Typography**: Host Grotesk is loaded for UI/body; Unbounded is loaded strictly for wordmark/hero display.
 - [ ] **Literal 7-Size Scale**: All type sizing maps strictly to the 7 functional sizes (Micro, Caption, Body, Subtitle, Title, PageTitle, Hero). No rogue font sizes.
-- [ ] **Capsule Navigation**: Desktop navigation is a floating fixed capsule docked at top-3 with a 300ms sliding active pill.
+- [ ] **Stationary Capsule Navigation**: Desktop navigation is a floating fixed capsule docked at top-3 (`position: fixed`) with matching container width, top padding offset, and 300ms sliding active pill.
 - [ ] **Glass Optical Values**: Capsule is 15px blur (0.20 fill); Panel is 12px blur (0.38 fill, 160% sat); Card is 10px blur (0.28 fill, 150% sat).
 - [ ] **Accent Derivation**: Accent tokens are derived from the icon palette via Section 3 OKLCH recipe; exact hex and OKLCH values documented.
 - [ ] **Accent Budget**: Accent color is restricted to primary buttons, focus rings, active tabs, progress bars, switches, and refraction field tint. Cards remain neutral.
@@ -765,7 +855,9 @@ A reviewer or automated test can verify any fruit application against this check
 - [ ] **Anti-Bloat Caps**: App uses <= 7 type sizes, <= 6 radii, <= 4 shadow levels (+ flat), <= 3 glass blur levels, and 11 spacing steps.
 - [ ] **Touch Target**: All interactive controls on Android or mobile web meet minimum 48dp x 48dp hit area.
 - [ ] **Focus Rings**: All interactive elements render the two-layer focus ring (2px white/obsidian + 4px accent).
-- [ ] **Sound Effects**: All five audio categories (enter, back, notification, failed, scroll) are wired, user-facing mute toggle is provided, and silent failure is verified.
+- [ ] **Sound Effects**: All five audio categories (enter, back, notification, failed, scroll) are wired, sound stays permanently enabled without header clutter, and silent failure is verified.
+- [ ] **Global Keyboard Shortcuts**: `Ctrl + ArrowLeft` and `Ctrl + ArrowRight` circular tab navigation is implemented with text input element evasion.
+- [ ] **Stutter-Free Motion**: All route transitions and interactive micro-physics animate strictly via `transform` and `opacity` with zero layout thrashing or geometry reflows.
 - [ ] **Reduced Motion**: Prefers-reduced-motion collapses all transitions to 0.01ms (Web) or snap() (Compose).
 
 ---

@@ -1,0 +1,407 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Local Font Definitions (Host Grotesk & Unbounded) --- */
+
+@font-face {
+  font-family: 'Host Grotesk';
+  src: url('/fonts/Host_Grotesk/HostGrotesk-VariableFont_wght.ttf') format('truetype-variations');
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Host Grotesk';
+  src: url('/fonts/Host_Grotesk/HostGrotesk-Italic-VariableFont_wght.ttf') format('truetype-variations');
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Unbounded';
+  src: url('/fonts/Unbounded/Unbounded-VariableFont_wght.ttf') format('truetype-variations');
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --accent: #FF5252;
+    --accent-light: #FF5252;
+    --accent-dark: #FFCCCC;
+    --accent-leaf: #89D66D;
+  }
+
+  html.dark {
+    --accent: #FF5252;
+    --accent-light: #FFCCCC;
+  }
+
+  html {
+    font-family: 'Host Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    letter-spacing: -0.011em;
+  }
+
+  body {
+    background-color: #F8F9F5;
+    background-image: 
+      radial-gradient(at 15% 15%, rgba(255, 82, 82, 0.05) 0px, transparent 55%),
+      radial-gradient(at 85% 85%, rgba(137, 214, 109, 0.04) 0px, transparent 50%),
+      radial-gradient(at 85% 15%, rgba(255, 82, 82, 0.03) 0px, transparent 45%);
+    background-attachment: fixed;
+    color: #1A1A1A;
+    min-height: 100vh;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  html.dark body {
+    background-color: #121310;
+    background-image: 
+      radial-gradient(at 15% 15%, rgba(255, 82, 82, 0.06) 0px, transparent 55%),
+      radial-gradient(at 85% 85%, rgba(137, 214, 109, 0.045) 0px, transparent 50%),
+      radial-gradient(at 80% 20%, rgba(255, 82, 82, 0.035) 0px, transparent 45%);
+    background-attachment: fixed;
+    color: #F3F4F1;
+  }
+
+  /* Unbounded is strictly display-only for brand wordmarks and prominent hero typography */
+  .font-display {
+    font-family: 'Unbounded', sans-serif;
+    letter-spacing: -0.03em;
+  }
+
+  button, input, select, textarea {
+    font: inherit;
+  }
+
+  button {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}
+
+/* --- Glass Material System --- */
+
+@layer components {
+  /* Floating Navigation Capsule - Original Crystal Glass (0.2 alpha, 15px blur) */
+  .glass-capsule {
+    background: rgba(255, 255, 255, 0.20);
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  }
+
+  html.dark .glass-capsule {
+    background: rgba(24, 25, 21, 0.20);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.45), 0 2px 8px -1px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Glass Overlay / Sheets / Trays / Dropdowns / Big Panels */
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.38);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.7), 0 12px 36px -4px rgba(0, 0, 0, 0.05);
+  }
+
+  html.dark .glass-panel {
+    background: rgba(22, 23, 19, 0.40);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.08), 0 12px 36px -4px rgba(0, 0, 0, 0.50);
+  }
+
+  /* Glass Card for Workspace Panels, Form Fields & Chips */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.50);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.5), 0 4px 16px -2px rgba(0, 0, 0, 0.03);
+  }
+
+  html.dark .glass-card {
+    background: rgba(22, 23, 19, 0.34);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 4px 20px -2px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Crystal-clear optical blur: preserves background visibility without milky opacity */
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .glass-capsule {
+      -webkit-backdrop-filter: blur(15px);
+      backdrop-filter: blur(15px);
+    }
+    .glass-panel {
+      -webkit-backdrop-filter: blur(12px) saturate(160%);
+      backdrop-filter: blur(12px) saturate(160%);
+    }
+    .glass-card {
+      -webkit-backdrop-filter: blur(10px) saturate(150%);
+      backdrop-filter: blur(10px) saturate(150%);
+    }
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-capsule, .glass-panel, .glass-card {
+      background: #FFFFFF;
+    }
+    html.dark .glass-capsule, html.dark .glass-panel, html.dark .glass-card {
+      background: #181915;
+    }
+  }
+
+  /* Tactile Interactive Flat Button Styles - Zero Glow */
+  .btn-interactive {
+    box-shadow: none !important;
+    transform: none !important;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  }
+  .btn-interactive:hover:not(:disabled) {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+  .btn-interactive:active:not(:disabled) {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Flat Action Buttons - Zero Glow, Pure Matte */
+  .btn-glass-primary, .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    background: #FF5252;
+    color: #FFFFFF;
+    border: 1px solid transparent;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+  }
+
+  .btn-glass-primary:hover:not(:disabled), .btn-primary:hover:not(:disabled) {
+    background: #E03E3E;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  .btn-glass-primary:active:not(:disabled), .btn-primary:active:not(:disabled) {
+    background: #CB2328;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  .btn-glass-primary:disabled, .btn-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none !important;
+  }
+
+  html.dark .btn-glass-primary, html.dark .btn-primary {
+    background: #FF5252;
+    color: #FFFFFF;
+    border: 1px solid transparent;
+    box-shadow: none !important;
+  }
+
+  html.dark .btn-glass-primary:hover:not(:disabled), html.dark .btn-primary:hover:not(:disabled) {
+    background: #E03E3E;
+    box-shadow: none !important;
+  }
+
+  .btn-glass-secondary, .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.2rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    background: #F1F2ED;
+    color: #1A1A1A;
+    border: 1px solid #E5E7EB;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .btn-glass-secondary:hover:not(:disabled), .btn-secondary:hover:not(:disabled) {
+    background: #E5E7EB;
+    border-color: #D1D5DB;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  .btn-glass-secondary:active:not(:disabled), .btn-secondary:active:not(:disabled) {
+    background: #D1D5DB;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  html.dark .btn-glass-secondary, html.dark .btn-secondary {
+    background: #23251E;
+    color: #F3F4F1;
+    border: 1px solid #33362C;
+    box-shadow: none !important;
+  }
+
+  html.dark .btn-glass-secondary:hover:not(:disabled), html.dark .btn-secondary:hover:not(:disabled) {
+    background: #2E3127;
+    border-color: #44473B;
+    box-shadow: none !important;
+  }
+
+  /* Directional Apple-like page transitions */
+  .animate-slide-out-to-left {
+    animation: slide-out-to-left 260ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    will-change: transform, opacity;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  .animate-slide-in-from-right {
+    animation: slide-in-from-right 260ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    will-change: transform, opacity;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  .animate-slide-out-to-right {
+    animation: slide-out-to-right 260ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    will-change: transform, opacity;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  .animate-slide-in-from-left {
+    animation: slide-in-from-left 260ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    will-change: transform, opacity;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+}
+
+@keyframes slide-out-to-left {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-60px, 0, 0);
+  }
+}
+
+@keyframes slide-in-from-right {
+  0% {
+    opacity: 0;
+    transform: translate3d(60px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slide-out-to-right {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(60px, 0, 0);
+  }
+}
+
+@keyframes slide-in-from-left {
+  0% {
+    opacity: 0;
+    transform: translate3d(-60px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    outline: 2px solid #FF5252;
+    outline-offset: 2px;
+    box-shadow: none !important;
+  }
+  html.dark .focus-ring:focus-visible {
+    outline: 2px solid #FF7070;
+    outline-offset: 2px;
+    box-shadow: none !important;
+  }
+
+  /* Minimalist Glass-Blending Scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
+  }
+
+  html.dark * {
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.14);
+    border-radius: 9999px;
+    border: 1.5px solid transparent;
+    background-clip: padding-box;
+    transition: background-color 0.2s ease;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.28);
+  }
+
+  html.dark ::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.16);
+    border: 1.5px solid transparent;
+    background-clip: padding-box;
+  }
+
+  html.dark ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.30);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* Accessibility: respect user prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
