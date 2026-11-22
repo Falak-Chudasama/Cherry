@@ -575,14 +575,26 @@ export const TaskDrawer: React.FC = () => {
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={handleAnimatedClose}
-            className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-800 transition shrink-0 whitespace-nowrap"
-            title="Close Drawer (Esc)"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {mode === 'edit' && existingTask && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="p-1.5 rounded-full text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0 whitespace-nowrap"
+                title="Delete Task"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleAnimatedClose}
+              className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-800 transition shrink-0 whitespace-nowrap"
+              title="Close Drawer (Esc)"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Form Body */}
@@ -972,9 +984,10 @@ export const TaskDrawer: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
-                className="whitespace-nowrap text-stone-400 hover:text-rose-500 text-xs font-medium transition shrink-0"
+                className="whitespace-nowrap inline-flex items-center gap-1.5 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 px-3 py-1.5 rounded-full text-xs font-semibold transition shrink-0"
               >
-                Delete Task
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete Task</span>
               </button>
             )
           ) : (

@@ -11,6 +11,7 @@ import {
   ListTodo,
   Flame,
   Repeat,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { playEnter, playNotification, playFailed, playScroll } from '../lib/sound';
@@ -176,6 +177,21 @@ export const DayPage: React.FC = () => {
     } catch {
       playFailed();
       toast('error', 'Failed to update subtask.');
+    }
+  };
+
+  // Delete task directly from card
+  const handleDeleteTask = async (taskId: string, taskTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.deleteTask(taskId);
+      setTasks((prev) => prev.filter((t) => t.task_id !== taskId));
+      playNotification();
+      toast('info', `Deleted "${taskTitle}"`);
+      bumpWorkspaceRevision();
+    } catch {
+      playFailed();
+      toast('error', 'Failed to delete task.');
     }
   };
 
@@ -479,8 +495,16 @@ export const DayPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Right: Status Pill & Arrow */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  {/* Right: Trash Button, Status Pill & Arrow */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteTask(task.task_id, task.title, e)}
+                      title="Delete task"
+                      className="p-1 rounded-lg text-stone-300 dark:text-stone-600 hover:text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                     <div
                       onClick={(e) => cycleTaskStatus(task, e)}
                       className="cursor-pointer select-none"
