@@ -3,7 +3,6 @@ import {
   CheckSquare,
   Square,
   Plus,
-  Sparkles,
   ChevronRight,
   Circle,
   CheckCircle2,
@@ -23,7 +22,6 @@ export const DayPage: React.FC = () => {
   const {
     todayStr,
     openTaskDrawer,
-    openAiDrawer,
     workspaceRevision,
     bumpWorkspaceRevision,
   } = useEcosystem();
@@ -310,18 +308,6 @@ export const DayPage: React.FC = () => {
               <Plus className="h-4 w-4" />
               <span>New Task</span>
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                playEnter();
-                openAiDrawer();
-              }}
-              className="focus-ring flex items-center gap-1.5 px-3.5 py-2 rounded-full glass-card text-stone-700 dark:text-stone-300 text-xs sm:text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5 transition"
-              title="Chat with Assistant"
-            >
-              <Sparkles className="h-4 w-4 text-cherry-flesh dark:text-cherry-blush" />
-              <span>Ask AI</span>
-            </button>
           </div>
         </div>
 
@@ -409,7 +395,7 @@ export const DayPage: React.FC = () => {
               No tasks scheduled for today
             </h3>
             <p className="text-xs text-stone-500 max-w-sm mx-auto">
-              Add your daily priorities or ask Cherry AI to organize your day into Must Do and Should Do tasks.
+              Add your daily priorities to organize your day into Must Do and Should Do tasks.
             </p>
           </div>
           <div className="flex items-center justify-center gap-2 pt-2">
@@ -423,17 +409,6 @@ export const DayPage: React.FC = () => {
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Create Task</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                playEnter();
-                openAiDrawer('Plan my tasks for today with Must Do and Should Do tiers');
-              }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full glass-card text-stone-700 dark:text-stone-300 text-xs font-medium hover:bg-black/5 dark:hover:bg-white/5 transition"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-cherry-flesh dark:text-cherry-blush" />
-              <span>Ask AI to Plan</span>
             </button>
           </div>
         </div>
