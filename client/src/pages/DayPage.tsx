@@ -1,523 +1,552 @@
-import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Clock,
-  Key,
-  ShieldCheck,
-  CheckCircle2,
-  AlertTriangle,
-  Sparkles,
-  Plus,
-  Trash2,
   CheckSquare,
   Square,
-  ArrowRight,
-  MessageSquare,
-  BookOpen,
-  Award,
-} from "lucide-react";
-import { api } from "../lib/api";
-import { playEnter, playNotification, playFailed, playScroll } from "../lib/sound";
-import { useToast } from "../components/ui/ToastProvider";
-import { useEcosystem } from "../context/EcosystemContext";
-import { LiveFocusTimer } from "../components/features/LiveFocusTimer";
-import { Task, RoutineOccurrence, TaskCategory, DailyFeedbackSummary } from "../types";
-import { CategoryBadge } from "../components/Badge";
-
-const SHORTCUTS = [
-  {
-    to: "/chat",
-    title: "Chat Operating Assistant",
-    description: "Converse with Cherry for quarter planning, task breakdown, and deep work accountability.",
-    icon: MessageSquare,
-    tone: "cherry",
-  },
-  {
-    to: "/quarter",
-    title: "Quarter Strategy & Ledger",
-    description: "Inspect 3 Quarter Key ledger, 7-day sprint timeline, and high-leverage outcomes.",
-    icon: ShieldCheck,
-    tone: "amber",
-  },
-  {
-    to: "/notes",
-    title: "Notes & Scratchpad",
-    description: "Capture fleeting thoughts, retrospective insights, and strategic drafts offline.",
-    icon: BookOpen,
-    tone: "blue",
-  },
-];
+  Plus,
+  Sparkles,
+  ChevronRight,
+  Circle,
+  CheckCircle2,
+  Clock,
+  ListTodo,
+  Flame,
+  Repeat,
+} from 'lucide-react';
+import { api } from '../lib/api';
+import { playEnter, playNotification, playFailed, playScroll } from '../lib/sound';
+import { useToast } from '../components/ui/ToastProvider';
+import { useEcosystem } from '../context/EcosystemContext';
+import { Task, KanbanStatus, TaskTier } from '../types';
 
 export const DayPage: React.FC = () => {
-  const { todayStr, activeQuarterId, remainingKeys, junkPoints, refreshEcosystem } = useEcosystem();
-  const { push } = useToast();
+  const {
+    todayStr,
+    openTaskDrawer,
+    openAiDrawer,
+    workspaceRevision,
+    bumpWorkspaceRevision,
+  } = useEcosystem();
 
+  const { push: toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [routines, setRoutines] = useState<RoutineOccurrence[]>([]);
-  const [routineAdherence, setRoutineAdherence] = useState(true);
-  const [missedRoutines, setMissedRoutines] = useState<string[]>([]);
-  const [frictions, setFrictions] = useState<any[]>([]);
-  const [feedback, setFeedback] = useState<DailyFeedbackSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tierFilter, setTierFilter] = useState<'ALL' | 'Must Do' | 'Should Do' | 'Routine'>('ALL');
+  const tierContainerRef = useRef<HTMLDivElement>(null);
+  const tierItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [tierPillStyle, setTierPillStyle] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    opacity: number;
+  }>({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
+  const [isTierReady, setIsTierReady] = useState(false);
 
-  // Loading states
-  const [drafting, setDrafting] = useState(false);
-  const [reflecting, setReflecting] = useState(false);
-
-  // Form states
-  const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskCategory, setNewTaskCategory] = useState<TaskCategory>("MUST");
-  const [frictionDesc, setFrictionDesc] = useState("");
+  const updateTierPill = () => {
+    const el = tierItemRefs.current[tierFilter];
+    if (el && tierContainerRef.current) {
+      setTierPillStyle({
+        left: el.offsetLeft,
+        top: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+        opacity: 1,
+      });
+    } else {
+      setTierPillStyle((prev) => ({ ...prev, opacity: 0 }));
+    }
+  };
 
   useEffect(() => {
-    loadDayData();
+    updateTierPill();
+    const timer = setTimeout(() => {
+      setIsTierReady(true);
+      updateTierPill();
+    }, 50);
+    window.addEventListener('resize', updateTierPill);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateTierPill);
+    };
+  }, [tierFilter]);
+
+  // Compute day number in quarter
+  const dayMeta = useMemo(() => {
+    try {
+      const d = new Date(todayStr);
+      const dayOfMonth = d.getDate();
+      let dayInPeriod = 1;
+      let totalDays = 7;
+      let periodName = 'Quarter 1';
+
+      if (dayOfMonth >= 1 && dayOfMonth <= 7) {
+        dayInPeriod = dayOfMonth;
+        periodName = 'Quarter 1';
+      } else if (dayOfMonth >= 8 && dayOfMonth <= 14) {
+        dayInPeriod = dayOfMonth - 7;
+        periodName = 'Quarter 2';
+      } else if (dayOfMonth >= 15 && dayOfMonth <= 21) {
+        dayInPeriod = dayOfMonth - 14;
+        periodName = 'Quarter 3';
+      } else if (dayOfMonth >= 22 && dayOfMonth <= 28) {
+        dayInPeriod = dayOfMonth - 21;
+        periodName = 'Quarter 4';
+      } else {
+        dayInPeriod = dayOfMonth - 28;
+        totalDays = 3;
+        periodName = 'Surplus Period';
+      }
+
+      const options: Intl.DateTimeFormatOptions = {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      };
+      const formattedDate = d.toLocaleDateString('en-US', options);
+
+      return {
+        formattedDate,
+        dayInPeriod,
+        totalDays,
+        periodName,
+      };
+    } catch {
+      return {
+        formattedDate: todayStr,
+        dayInPeriod: 1,
+        totalDays: 7,
+        periodName: 'Quarter',
+      };
+    }
   }, [todayStr]);
 
-  const loadDayData = async () => {
+  const loadTasks = async () => {
     try {
+      setLoading(true);
       const data = await api.getDayTasks(todayStr);
       setTasks(data.tasks || []);
-      setRoutines(data.routines || []);
-      setRoutineAdherence(data.routine_adherence ?? true);
-      setMissedRoutines(data.missed_routines || []);
-
-      const f = await api.getDayFrictions(todayStr);
-      setFrictions(f || []);
     } catch (err) {
-      console.debug("Failed to load day data", err);
+      console.debug('Failed to load day tasks', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleToggleTask = async (task: Task) => {
-    playEnter();
-    const nextStatus = task.status === "completed" ? "in_progress" : "completed";
-    await api.updateTaskStatus(task.task_id, nextStatus);
-    loadDayData();
-    refreshEcosystem();
-  };
+  useEffect(() => {
+    loadTasks();
+  }, [todayStr, workspaceRevision]);
 
-  const handleDeleteTask = async (e: React.MouseEvent, taskId: string) => {
+  // Status cycle: Not started -> In progress -> Done -> Not started
+  const cycleTaskStatus = async (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
-    playEnter();
-    try {
-      await api.updateTaskStatus(taskId, "cancelled");
-      push("info", "Task cancelled.");
-      loadDayData();
-      refreshEcosystem();
-    } catch {
-      push("error", "Failed to cancel task.");
-    }
-  };
+    playScroll();
+    const nextStatus: KanbanStatus =
+      task.status === 'Not started'
+        ? 'In progress'
+        : task.status === 'In progress'
+        ? 'Done'
+        : 'Not started';
 
-  const handleToggleRoutine = async (occ: RoutineOccurrence) => {
-    playEnter();
-    await api.completeRoutine(occ.occurrence_id, !occ.is_completed);
-    loadDayData();
-    refreshEcosystem();
-  };
-
-  // 1-Click AI Task Drafting directly on Day Page
-  const handleAutoDraft = async () => {
-    setDrafting(true);
-    playEnter();
     try {
-      await api.getTodoDraft(todayStr);
-      await api.finalizeTodoDraft(todayStr);
+      const updated = await api.updateTaskStatus(task.task_id, nextStatus);
+      setTasks((prev) => prev.map((t) => (t.task_id === task.task_id ? updated : t)));
       playNotification();
-      push("success", "Today's Todo list generated from active Quarter goals.");
-      await loadDayData();
-      await refreshEcosystem();
+      bumpWorkspaceRevision();
     } catch {
       playFailed();
-      push("error", "Unable to draft tasks. Please ensure an active plan exists.");
-    } finally {
-      setDrafting(false);
+      toast('error', 'Failed to update task status.');
     }
   };
 
-  // 1-Click Evening Reflection
-  const handleReflectDay = async () => {
-    setReflecting(true);
-    playEnter();
+  // Toggle subtask directly from card
+  const handleToggleSubtask = async (
+    taskId: string,
+    subtaskId: string,
+    currentVal: boolean,
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    playScroll();
     try {
-      const fb = await api.getDailyFeedback(todayStr, true);
-      setFeedback(fb);
+      const updated = await api.toggleSubtask(taskId, subtaskId, !currentVal);
+      setTasks((prev) => prev.map((t) => (t.task_id === taskId ? updated : t)));
       playNotification();
-      push("success", "Daily reflection synthesized from Lemon device activity.");
+      bumpWorkspaceRevision();
     } catch {
       playFailed();
-      push("error", "Failed to retrieve reflection.");
-    } finally {
-      setReflecting(false);
+      toast('error', 'Failed to update subtask.');
     }
   };
 
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskTitle.trim() || !activeQuarterId) return;
+  // Filter tasks by selected Tier
+  const filteredTasks = useMemo(() => {
+    if (tierFilter === 'ALL') return tasks;
+    return tasks.filter((t) => (t.tier || 'Must Do') === tierFilter);
+  }, [tasks, tierFilter]);
 
-    playEnter();
-    try {
-      await api.createTask({
-        quarter_id: activeQuarterId,
-        title: newTaskTitle.trim(),
-        category: newTaskCategory,
-        target_date: todayStr,
-        estimated_minutes: 30,
-      });
-      setNewTaskTitle("");
-      push("success", "Task added.");
-      loadDayData();
-      refreshEcosystem();
-    } catch {
-      playFailed();
-      push("error", "Failed to create task.");
+  const completedCount = useMemo(() => {
+    return tasks.filter((t) => t.status === 'Done').length;
+  }, [tasks]);
+
+  const progressPercent = useMemo(() => {
+    if (tasks.length === 0) return 0;
+    return Math.round((completedCount / tasks.length) * 100);
+  }, [tasks, completedCount]);
+
+  const getTierBadge = (tier?: TaskTier | string) => {
+    const norm = (tier || '').toLowerCase();
+    if (norm.includes('must')) {
+      return (
+        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+          <Flame className="h-3 w-3 text-rose-500" />
+          <span>Must Do</span>
+        </span>
+      );
     }
+    if (norm.includes('should')) {
+      return (
+        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+          <Clock className="h-3 w-3 text-orange-500" />
+          <span>Should Do</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+        <Repeat className="h-3 w-3 text-purple-500" />
+        <span>Routine</span>
+      </span>
+    );
   };
 
-  const handleAddFriction = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!frictionDesc.trim()) return;
+  const getTaskDaysBadge = (task: Task) => {
+    const days =
+      task.scheduled_days ||
+      (task.start_day !== undefined && task.end_day !== undefined
+        ? Array.from({ length: task.end_day - task.start_day + 1 }, (_, i) => task.start_day! + i)
+        : null);
+    if (!days || days.length === 0) return null;
+    const isSurplus = (task.period_id || '').includes('SURPLUS');
+    const tDays = isSurplus ? 3 : 7;
+    const label =
+      days.length === tDays
+        ? 'All Days'
+        : days.length === 1
+        ? `Day ${days[0]}`
+        : `D${days[0]}–${days[days.length - 1]}`;
 
-    playEnter();
-    try {
-      await api.logFriction({
-        date_str: todayStr,
-        category: "interruption",
-        description: frictionDesc.trim(),
-      });
-      setFrictionDesc("");
-      push("info", "Friction logged.");
-      loadDayData();
-    } catch {
-      playFailed();
-      push("error", "Failed to log friction.");
-    }
+    return (
+      <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-200/60 dark:border-stone-700/60 shrink-0">
+        {label}
+      </span>
+    );
   };
 
-  const completedCount = tasks.filter((t) => t.status === "completed").length;
-  const completedRoutines = routines.filter((r) => r.is_completed).length;
+  const getStatusBadge = (status: KanbanStatus) => {
+    switch (status) {
+      case 'Done':
+        return (
+          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+            <CheckCircle2 className="h-3 w-3" /> Done
+          </span>
+        );
+      case 'In progress':
+        return (
+          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
+            <Clock className="h-3 w-3" /> In Progress
+          </span>
+        );
+      default:
+        return (
+          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-200 dark:border-stone-700">
+            <Circle className="h-3 w-3" /> Not Started
+          </span>
+        );
+    }
+  };
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 pt-4 sm:pt-6 pb-24 sm:pb-20">
-      {/* Hero Header - Matching Kiwi's Proportions & Elegance */}
-      <section className="text-center mb-8 sm:mb-10 animate-fade-in">
-        <div className="inline-flex items-center justify-center mb-4 sm:mb-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-3xl glass-card p-2.5 shadow-none border border-black/5 dark:border-white/10">
-            <img src="/cherry-icon.svg" alt="Cherry" className="h-11 w-11 object-contain" />
-          </div>
-        </div>
-
-        <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-stone-900 dark:text-stone-50 leading-tight">
-          Daily Execution Workspace.
-        </h1>
-
-        <p className="mx-auto mt-3 max-w-xl text-sm sm:text-base text-stone-600 dark:text-stone-400 font-sans leading-relaxed">
-          Track deliverables, maintain non-negotiable routines, and protect deep focus.
-        </p>
-
-        {/* Status Pill Badges Row */}
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold glass-card border border-black/5 dark:border-white/10 text-stone-700 dark:text-stone-300">
-            <Clock className="h-3.5 w-3.5 text-cherry-flesh" />
-            <span className="font-mono">{todayStr}</span>
-          </span>
-
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold glass-card border border-black/5 dark:border-white/10 text-stone-700 dark:text-stone-300">
-            <Key className="h-3.5 w-3.5 text-amber-500" />
-            <span>Quarter {activeQuarterId} ({remainingKeys}/3 QK)</span>
-          </span>
-
-          <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
-              routineAdherence
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20"
-                : "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/20"
-            }`}
-          >
-            {routineAdherence ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-            <span>{routineAdherence ? "Routines Adherent" : `Missed (${missedRoutines.join(", ")})`}</span>
-          </span>
-
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold glass-card border border-black/5 dark:border-white/10 text-stone-600 dark:text-stone-400">
-            <span>{junkPoints}/50 JP</span>
-          </span>
-        </div>
-      </section>
-
-      {/* Primary Workspace Surface: Live Focus Pomodoro Timer Widget */}
-      <section className="mb-8 sm:mb-10">
-        <LiveFocusTimer />
-      </section>
-
-      {/* Core Execution 2-Column Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
-        {/* Column 1: Actionable Deliverables */}
-        <div className="glass-panel rounded-2xl p-5 sm:p-6 shadow-none border border-black/5 dark:border-white/10 flex flex-col justify-between space-y-4">
+    <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
+      {/* Calm, Minimalist Day Header */}
+      <div className="glass-panel rounded-3xl p-5 sm:p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-soft space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200 font-sans">
-                  Deliverables ({completedCount}/{tasks.length})
-                </h2>
-                <span className="text-xs text-stone-500 dark:text-stone-400">
-                  Must & Should tasks planned for today
-                </span>
-              </div>
-              <button
-                onClick={handleAutoDraft}
-                disabled={drafting}
-                className="btn-glass-primary !py-1.5 !px-3 text-xs font-bold shrink-0 cursor-pointer shadow-none"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>{drafting ? "Drafting..." : "Draft with AI"}</span>
-              </button>
-            </div>
-
-            {/* Task List */}
-            {tasks.length === 0 ? (
-              <div className="py-8 text-center space-y-3 glass-card rounded-xl p-4 border border-black/5 dark:border-white/10">
-                <p className="text-xs text-stone-500 dark:text-stone-400">
-                  No deliverables scheduled for today yet.
-                </p>
-                <button
-                  onClick={handleAutoDraft}
-                  disabled={drafting}
-                  className="btn-glass-primary text-xs font-semibold cursor-pointer shadow-none"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>Synthesize from Active Plan</span>
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {tasks.map((task) => {
-                  const isDone = task.status === "completed";
-                  return (
-                    <div
-                      key={task.task_id}
-                      onClick={() => handleToggleTask(task)}
-                      className="group flex items-center justify-between p-3 rounded-xl glass-card cursor-pointer select-none transition hover:bg-black/5 dark:hover:bg-white/5 border border-black/5 dark:border-white/10"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {isDone ? (
-                          <CheckSquare className="h-4 w-4 text-emerald-500 shrink-0" />
-                        ) : (
-                          <Square className="h-4 w-4 text-stone-400 shrink-0 group-hover:text-stone-600" />
-                        )}
-                        <span
-                          className={`text-xs sm:text-sm font-medium truncate ${
-                            isDone ? "line-through text-stone-400" : "text-stone-800 dark:text-stone-200"
-                          }`}
-                        >
-                          {task.title}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <CategoryBadge category={task.category} />
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteTask(e, task.task_id)}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-stone-400 hover:text-red-500 hover:bg-black/5 dark:hover:bg-white/10 transition"
-                          title="Delete task"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Quick Add Inline Form */}
-          <form onSubmit={handleCreateTask} className="pt-2 border-t border-black/5 dark:border-white/10 flex gap-2">
-            <input
-              type="text"
-              placeholder="Add a new deliverable..."
-              value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
-              className="flex-1 bg-black/5 dark:bg-white/5 rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-cherry-500"
-            />
-            <select
-              value={newTaskCategory}
-              onChange={(e) => setNewTaskCategory(e.target.value as TaskCategory)}
-              className="bg-black/5 dark:bg-white/5 rounded-xl px-2.5 py-2 text-xs font-bold text-stone-700 dark:text-stone-300 focus:outline-none"
-            >
-              <option value="MUST">MUST</option>
-              <option value="SHOULD">SHOULD</option>
-            </select>
-            <button
-              type="submit"
-              disabled={!newTaskTitle.trim()}
-              className="px-3 py-2 rounded-xl bg-cherry-500 hover:bg-cherry-600 text-white text-xs font-bold disabled:opacity-40 transition shadow-none cursor-pointer"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </form>
-        </div>
-
-        {/* Column 2: Routines & Evening Reflection */}
-        <div className="space-y-6">
-          {/* Non-Negotiable Routines */}
-          <div className="glass-panel rounded-2xl p-5 sm:p-6 shadow-none border border-black/5 dark:border-white/10 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200 font-sans">
-                  Non-Negotiable Routines ({completedRoutines}/{routines.length})
-                </h2>
-                <span className="text-xs text-stone-500 dark:text-stone-400">
-                  Everyday foundational habits
-                </span>
-              </div>
-              <span className="text-2xs font-mono font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
-                Non-Negotiable
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900">
+                {dayMeta.periodName} • Day {dayMeta.dayInPeriod} of {dayMeta.totalDays}
               </span>
             </div>
-
-            <div className="space-y-2">
-              {routines.map((occ) => (
-                <div
-                  key={occ.occurrence_id}
-                  onClick={() => handleToggleRoutine(occ)}
-                  className="flex items-center justify-between p-3 rounded-xl glass-card cursor-pointer select-none transition hover:bg-black/5 dark:hover:bg-white/5 border border-black/5 dark:border-white/10"
-                >
-                  <div className="flex items-center gap-3">
-                    {occ.is_completed ? (
-                      <CheckSquare className="h-4 w-4 text-purple-600 dark:text-purple-400 shrink-0" />
-                    ) : (
-                      <Square className="h-4 w-4 text-stone-400 shrink-0" />
-                    )}
-                    <span
-                      className={`text-xs sm:text-sm font-medium ${
-                        occ.is_completed ? "line-through text-stone-400" : "text-stone-800 dark:text-stone-200"
-                      }`}
-                    >
-                      {occ.title}
-                    </span>
-                  </div>
-                  <span className="text-3xs font-mono uppercase tracking-wider text-stone-400">
-                    {occ.is_completed ? "Done" : "Pending"}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-stone-900 dark:text-white">
+              {dayMeta.formattedDate}
+            </h1>
           </div>
 
-          {/* Evening Reflection & Daily Synthesis */}
-          <div className="glass-panel rounded-2xl p-5 sm:p-6 shadow-none border border-black/5 dark:border-white/10 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200 font-sans">
-                  Daily Reflection & Evidence
-                </h2>
-                <span className="text-xs text-stone-500 dark:text-stone-400">
-                  Synthesize Lemon activity into performance feedback
-                </span>
-              </div>
-              <button
-                onClick={handleReflectDay}
-                disabled={reflecting}
-                className="btn-glass-primary !py-1.5 !px-3 text-xs font-bold shrink-0 cursor-pointer shadow-none"
-              >
-                <Award className="h-3.5 w-3.5" />
-                <span>{reflecting ? "Analyzing..." : "Run Reflection"}</span>
-              </button>
-            </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                playEnter();
+                openTaskDrawer({ mode: 'create' });
+              }}
+              className="focus-ring flex items-center gap-1.5 px-4 py-2 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition hover:scale-[1.02]"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Task</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                playEnter();
+                openAiDrawer();
+              }}
+              className="focus-ring flex items-center gap-1.5 px-3.5 py-2 rounded-full glass-card text-stone-700 dark:text-stone-300 text-xs sm:text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5 transition"
+              title="Chat with Assistant"
+            >
+              <Sparkles className="h-4 w-4 text-cherry-flesh dark:text-cherry-blush" />
+              <span>Ask AI</span>
+            </button>
+          </div>
+        </div>
 
-            {feedback ? (
-              <div className="p-3.5 rounded-xl glass-card space-y-2 border border-black/5 dark:border-white/10">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-stone-800 dark:text-stone-200">Alignment Verdict</span>
-                  <span className="font-bold text-cherry-flesh">{feedback.alignment_verdict}</span>
-                </div>
-                <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
-                  {feedback.actionable_improvement}
-                </p>
-                <div className="text-3xs font-mono text-stone-400 flex justify-between pt-1 border-t border-black/5 dark:border-white/10">
-                  <span>Tasks: {feedback.metrics.tasks_completed_count}/{feedback.metrics.tasks_approved_count}</span>
-                  <span>Routines: {feedback.metrics.routines_completed_count}/{feedback.metrics.routines_scheduled_count}</span>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-stone-500 dark:text-stone-400">
-                Run daily reflection at the end of your day to inspect adherence and close the day.
-              </p>
-            )}
-
-            {/* Friction Log Form */}
-            <form onSubmit={handleAddFriction} className="pt-2 flex gap-2">
-              <input
-                type="text"
-                placeholder="Log a friction or distraction..."
-                value={frictionDesc}
-                onChange={(e) => setFrictionDesc(e.target.value)}
-                className="flex-1 bg-black/5 dark:bg-white/5 rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={!frictionDesc.trim()}
-                className="px-3 py-2 rounded-xl bg-black/10 dark:bg-white/10 hover:bg-black/15 text-stone-700 dark:text-stone-300 text-xs font-bold disabled:opacity-40 transition shadow-none cursor-pointer"
-              >
-                Log
-              </button>
-            </form>
-
-            {/* Logged frictions preview */}
-            {frictions.length > 0 && (
-              <div className="pt-2 border-t border-black/5 dark:border-white/10 space-y-1">
-                <span className="text-3xs font-mono uppercase text-stone-400">Logged Frictions ({frictions.length})</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {frictions.map((f: any, idx: number) => (
-                    <span key={idx} className="text-2xs px-2 py-0.5 rounded-lg glass-card text-stone-600 dark:text-stone-300">
-                      {f.description}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+        {/* Clean Progress Indicator */}
+        <div className="space-y-1.5 pt-2 border-t border-black/[0.05] dark:border-white/[0.08]">
+          <div className="flex items-center justify-between text-xs text-stone-600 dark:text-stone-400">
+            <span>
+              {completedCount} of {tasks.length} tasks completed
+            </span>
+            <span className="font-semibold">{progressPercent}%</span>
+          </div>
+          <div className="h-1.5 w-full bg-stone-200/80 dark:bg-stone-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-cherry-flesh transition-all duration-500 ease-out rounded-full"
+              style={{ width: `${progressPercent}%` }}
+            />
           </div>
         </div>
       </div>
 
-      {/* Specialized Tool Shortcuts - Matching Kiwi's SHORTCUTS Grid */}
-      <section>
-        <div className="mb-4 sm:mb-5 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 font-sans">
-            Specialized Toolkits
-          </h2>
-          <span className="text-xs text-stone-400 dark:text-stone-500">Choose a dedicated mode</span>
+      {/* Tier Filter Pills (Kiwi Segmented Style with Dynamic Sliding Pill) */}
+      <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
+        <div
+          ref={tierContainerRef}
+          className="relative flex items-center gap-1 p-1 rounded-full bg-transparent border border-black/[0.06] dark:border-white/[0.08]"
+        >
+          {/* Dynamic Sliding Active Indicator Pill */}
+          <div
+            className={`absolute top-0 left-0 rounded-full bg-stone-900 dark:bg-stone-100 shadow-xs pointer-events-none ${
+              isTierReady ? 'transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]' : ''
+            }`}
+            style={{
+              transform: `translate3d(${tierPillStyle.left}px, ${tierPillStyle.top}px, 0)`,
+              width: `${tierPillStyle.width}px`,
+              height: `${tierPillStyle.height}px`,
+              opacity: tierPillStyle.opacity,
+              willChange: 'transform, width',
+            }}
+            aria-hidden="true"
+          />
+
+          {(['ALL', 'Must Do', 'Should Do', 'Routine'] as const).map((t) => {
+            const isSelected = tierFilter === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                ref={(el) => {
+                  tierItemRefs.current[t] = el;
+                }}
+                onClick={() => {
+                  playScroll();
+                  setTierFilter(t);
+                }}
+                className={`relative z-10 px-3.5 py-1 rounded-full text-xs font-semibold transition-colors duration-200 ${
+                  isSelected
+                    ? 'text-white dark:text-stone-900'
+                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+                }`}
+              >
+                {t === 'ALL' ? 'All Tasks' : t}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {SHORTCUTS.map(({ to, title, description, icon: Icon }) => (
-            <Link
-              key={to}
-              to={to}
-              onClick={() => playScroll()}
-              className="group flex flex-col justify-between rounded-2xl glass-card p-5 sm:p-6 shadow-none border border-black/5 dark:border-white/10 transition hover:border-cherry-500/50 hover:bg-white/50 dark:hover:bg-white/[0.04] cursor-pointer"
+        <span className="text-xs text-stone-400 font-medium hidden sm:inline">
+          {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'}
+        </span>
+      </div>
+
+      {/* Tasks List */}
+      {loading ? (
+        <div className="flex min-h-[30vh] items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-stone-300 dark:border-stone-700 border-t-cherry-flesh" />
+        </div>
+      ) : filteredTasks.length === 0 ? (
+        /* Kiwi-Style Restrained Empty State */
+        <div className="glass-panel rounded-3xl p-8 sm:p-12 text-center border border-black/[0.06] dark:border-white/[0.08] shadow-soft space-y-4">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-400">
+            <ListTodo className="h-6 w-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-stone-900 dark:text-white">
+              No tasks scheduled for today
+            </h3>
+            <p className="text-xs text-stone-500 max-w-sm mx-auto">
+              Add your daily priorities or ask Cherry AI to organize your day into Must Do and Should Do tasks.
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                playEnter();
+                openTaskDrawer({ mode: 'create' });
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs font-semibold shadow-xs transition"
             >
-              <div>
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl glass-card text-cherry-500 dark:text-cherry-300 transition group-hover:bg-cherry-500 group-hover:text-white border border-black/5 dark:border-white/10">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <h3 className="mt-4 text-base font-bold text-stone-900 dark:text-stone-100 font-sans group-hover:text-cherry-flesh dark:group-hover:text-cherry-blush transition">
-                  {title}
-                </h3>
-                <p className="mt-1.5 text-xs sm:text-sm text-stone-600 dark:text-stone-400 leading-relaxed font-sans">
-                  {description}
-                </p>
-              </div>
-
-              <div className="mt-5 flex items-center gap-1.5 text-xs font-bold text-stone-400 group-hover:text-cherry-flesh dark:group-hover:text-cherry-blush transition">
-                <span>Open tool</span>
-                <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
-              </div>
-            </Link>
-          ))}
+              <Plus className="h-3.5 w-3.5" />
+              <span>Create Task</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                playEnter();
+                openAiDrawer('Plan my tasks for today with Must Do and Should Do tiers');
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full glass-card text-stone-700 dark:text-stone-300 text-xs font-medium hover:bg-black/5 dark:hover:bg-white/5 transition"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-cherry-flesh dark:text-cherry-blush" />
+              <span>Ask AI to Plan</span>
+            </button>
+          </div>
         </div>
-      </section>
-    </main>
+      ) : (
+        <div className="space-y-3">
+          {filteredTasks.map((task) => {
+            const isDone = task.status === 'Done';
+            const subtasks = task.subtasks || [];
+            const doneSubtasks = subtasks.filter((s) => s.is_completed).length;
+
+            return (
+              <div
+                key={task.task_id}
+                onClick={() => openTaskDrawer({ task, mode: 'edit' })}
+                className={`glass-card rounded-2xl p-4 sm:p-5 border transition-all cursor-pointer group shadow-soft hover:border-black/20 dark:hover:border-white/20 ${
+                  isDone
+                    ? 'border-black/[0.04] dark:border-white/[0.05] opacity-75'
+                    : 'border-black/[0.07] dark:border-white/[0.09]'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  {/* Left: Status Toggle & Title */}
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={(e) => cycleTaskStatus(task, e)}
+                      className="mt-0.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition shrink-0"
+                      title="Click to cycle status"
+                    >
+                      {isDone ? (
+                        <CheckSquare className="h-5 w-5 text-emerald-500 fill-emerald-500/20" />
+                      ) : task.status === 'In progress' ? (
+                        <Clock className="h-5 w-5 text-blue-500" />
+                      ) : (
+                        <Square className="h-5 w-5" />
+                      )}
+                    </button>
+
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3
+                          className={`text-sm sm:text-base font-semibold leading-snug transition-colors ${
+                            isDone
+                              ? 'line-through text-stone-400 dark:text-stone-500'
+                              : 'text-stone-900 dark:text-white'
+                          }`}
+                        >
+                          {task.title}
+                        </h3>
+                        {getTierBadge(task.tier)}
+                        {getTaskDaysBadge(task)}
+                      </div>
+
+                      {task.description && (
+                        <p className="text-xs text-stone-500 line-clamp-2">
+                          {task.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: Status Pill & Arrow */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div
+                      onClick={(e) => cycleTaskStatus(task, e)}
+                      className="cursor-pointer select-none"
+                    >
+                      {getStatusBadge(task.status)}
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 transition" />
+                  </div>
+                </div>
+
+                {/* Subtasks Checklist */}
+                {subtasks.length > 0 && (
+                  <div className="mt-3.5 pl-8 space-y-1.5 border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
+                    <div className="flex items-center justify-between text-2xs text-stone-400 font-medium">
+                      <span>Subtasks</span>
+                      <span>
+                        {doneSubtasks}/{subtasks.length} done
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      {subtasks.map((st) => (
+                        <div
+                          key={st.subtask_id}
+                          onClick={(e) =>
+                            handleToggleSubtask(
+                              task.task_id,
+                              st.subtask_id,
+                              st.is_completed,
+                              e
+                            )
+                          }
+                          className="flex items-center justify-between p-1.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition cursor-pointer select-none"
+                        >
+                          <div className="flex items-center gap-2">
+                            {st.is_completed ? (
+                              <CheckSquare className="h-3.5 w-3.5 text-emerald-500" />
+                            ) : (
+                              <Square className="h-3.5 w-3.5 text-stone-400" />
+                            )}
+                            <span
+                              className={`text-xs ${
+                                st.is_completed
+                                  ? 'line-through text-stone-400 dark:text-stone-500'
+                                  : 'text-stone-700 dark:text-stone-300'
+                              }`}
+                            >
+                              {st.title}
+                            </span>
+                          </div>
+
+                          {(st.start_day !== undefined || st.end_day !== undefined) && (
+                            <span className="font-mono text-2xs px-1.5 py-0.2 rounded bg-stone-200/60 dark:bg-stone-800 text-stone-500">
+                              D{st.start_day ?? 1}–{st.end_day ?? 7}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 };

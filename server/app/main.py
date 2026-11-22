@@ -21,6 +21,7 @@ from app.routes import (
     accountability,
     feedback,
     notes,
+    commands,
     lemon,
     chat,
     lifecycle,
@@ -43,10 +44,21 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Startup lifecycle reconciliation encountered an issue: %s", exc, exc_info=True)
 
+    # Launch Live 23:00 / 00:00 Background Scheduler Loop (ticks every 30s)
+    scheduler_task = asyncio.create_task(lifecycle_service.start_scheduler_loop())
+
     yield
 
     # --- Shutdown ---
     logger.info("Shutting down Cherry Backend...")
+    scheduler_task.cancel()
+    try:
+        await scheduler_task
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.warning("Scheduler task cancelled with error: %s", e)
+
     await basket_adapter.close()
     await lemon_adapter.close()
     db_manager.close()
@@ -76,6 +88,7 @@ app.include_router(focus.router)
 app.include_router(accountability.router)
 app.include_router(feedback.router)
 app.include_router(notes.router)
+app.include_router(commands.router)
 app.include_router(lemon.router)
 app.include_router(chat.router)
 app.include_router(lifecycle.router)

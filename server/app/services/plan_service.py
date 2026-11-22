@@ -182,6 +182,64 @@ class PlanService:
         doc = await self.db.quarter_plans.find_one({"quarter_id": quarter_id, "status": "approved"})
         return QuarterPlanModel(**doc) if doc else None
 
+    async def commit_plan_from_composer(
+        self,
+        period_id: str,
+        quarter_goal: str,
+        deliverables: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Commits an approved plan from the Composer Modal into MongoDB tasks.
+        Strict human approval boundary: database is untouched until user explicitly commits.
+        """
+        plan_id = str(uuid.uuid4())
+        if "SURPLUS" in period_id.upper():
+            period_type = "SURPLUS"
+        elif "Q4" in period_id.upper():
+            period_type = "Q4"
+        elif "Q3" in period_id.upper():
+            period_type = "Q3"
+        elif "Q2" in period_id.upper():
+            period_type = "Q2"
+        else:
+            period_type = "Q1"
+
+        created_tasks = []
+        for d in deliverables:
+            title = d.get("title", "Core Deliverable")
+            desc = d.get("description", "")
+            priority = d.get("priority", "Normal")
+            subtasks = d.get("subtasks", [])
+            task = await task_service.create_task(
+                period_id=period_id,
+                title=title,
+                period_type=period_type,
+                description=desc,
+                priority=priority,
+                status="Not started",
+                subtasks=subtasks,
+            )
+            created_tasks.append(task)
+
+        plan_doc = {
+            "plan_id": plan_id,
+            "period_id": period_id,
+            "quarter_id": period_id,
+            "quarter_goal": quarter_goal,
+            "deliverables_count": len(deliverables),
+            "created_tasks_count": len(created_tasks),
+            "status": "approved",
+            "created_at": datetime.utcnow(),
+        }
+        await self.db.quarter_plans.insert_one(plan_doc)
+
+        return {
+            "success": True,
+            "plan_id": plan_id,
+            "quarter_goal": quarter_goal,
+            "created_tasks": [t.model_dump() for t in created_tasks],
+        }
+
     # --- Daily Todo Drafting ---
 
     async def generate_daily_todo_draft(

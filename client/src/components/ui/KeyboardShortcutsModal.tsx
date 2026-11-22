@@ -10,19 +10,21 @@ const SHORTCUT_GROUPS = [
   {
     title: 'Navigation',
     shortcuts: [
+      { key: '1 - 2', desc: 'Jump to view (Today, Quarter)' },
+      { key: '3 - 4', desc: 'Utility views (Notes, Chat)' },
       { key: 'Ctrl + →', desc: 'Next view' },
       { key: 'Ctrl + ←', desc: 'Previous view' },
-      { key: '1 - 4', desc: 'Jump to view (Chat, Day, Quarter, Notes)' },
     ],
   },
   {
     title: 'Actions',
     shortcuts: [
-      { key: '/', desc: 'Focus chat input' },
+      { key: '/ or Ctrl+K', desc: 'Toggle AI Side Drawer' },
+      { key: 'n', desc: 'Create New Task' },
       { key: 't', desc: 'Toggle Dark / Light mode' },
       { key: 'm', desc: 'Toggle Audio SFX mute' },
       { key: '?', desc: 'Show shortcuts' },
-      { key: 'Esc', desc: 'Close dialog / blur input' },
+      { key: 'Esc', desc: 'Close dialog / drawer / blur input' },
     ],
   },
 ];

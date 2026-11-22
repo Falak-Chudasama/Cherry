@@ -4,6 +4,7 @@ import { api } from "../../lib/api";
 import { playEnter, playNotification, playFailed } from "../../lib/sound";
 import { useToast } from "../ui/ToastProvider";
 import { CategoryBadge } from "../Badge";
+import { MarkdownRenderer } from "../ui/MarkdownRenderer";
 
 interface PlanProposalCardProps {
   data: {
@@ -74,6 +75,13 @@ export const PlanProposalCard: React.FC<PlanProposalCardProps> = ({ data, onAppr
               <span className="font-medium">{g.title}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Rationale Narrative if present */}
+      {data.rationale && (
+        <div className="p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-stone-200/50 dark:border-stone-800/50">
+          <MarkdownRenderer content={data.rationale} variant="compact" />
         </div>
       )}
 

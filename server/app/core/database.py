@@ -91,6 +91,8 @@ class DatabaseManager:
             await target_db.junk_point_ledger.create_index([("entry_id", ASCENDING)], unique=True)
             await target_db.junk_point_ledger.create_index([("date_str", ASCENDING)])
             await target_db.violations.create_index([("violation_id", ASCENDING)], unique=True)
+            await target_db.rules.create_index([("rule_id", ASCENDING)], unique=True)
+            await target_db.food_jp_mappings.create_index([("food_name", ASCENDING)], unique=True)
 
             # Focus & Pomodoro
             await target_db.pomodoro_sessions.create_index([("session_id", ASCENDING)], unique=True)
@@ -122,8 +124,13 @@ class DatabaseManager:
             await target_db.notes.create_index([("updated_at", -1)])
 
             # C. commands (Behavioral Rules)
+            await target_db.commands.create_index([("command_id", ASCENDING)], unique=True, sparse=True)
             await target_db.commands.create_index([("application", ASCENDING)])
             await target_db.commands.create_index([("is_active", ASCENDING)])
+
+            # Executed Actions (Chat quick_action audit & approval log)
+            await target_db.executed_actions.create_index([("action_id", ASCENDING)], unique=True)
+            await target_db.executed_actions.create_index([("created_at", -1)])
 
             # Automatic Migration from legacy collections if present
             await self._run_migrations(target_db)
@@ -204,6 +211,34 @@ class DatabaseManager:
                     "created_at": now_str,
                     "updated_at": now_str,
                 })
+            # 4. Migrate task statuses cleanly to 3-state Kanban model ("Not started", "In progress", "Done")
+            task_cursor = target_db.tasks.find({"status": {"$nin": ["Not started", "In progress", "Done"]}})
+            async for t_doc in task_cursor:
+                old_status = str(t_doc.get("status", "")).lower()
+                if old_status in ("completed", "done"):
+                    new_status = "Done"
+                elif old_status in ("in_progress", "in-progress", "active"):
+                    new_status = "In progress"
+                else:
+                    new_status = "Not started"
+                
+                updates = {"status": new_status}
+                if not t_doc.get("period_id") and t_doc.get("quarter_id"):
+                    updates["period_id"] = t_doc["quarter_id"]
+                if not t_doc.get("period_type"):
+                    pid = updates.get("period_id") or t_doc.get("period_id") or t_doc.get("quarter_id", "")
+                    if "SURPLUS" in pid.upper():
+                        updates["period_type"] = "SURPLUS"
+                    elif "Q4" in pid.upper():
+                        updates["period_type"] = "Q4"
+                    elif "Q3" in pid.upper():
+                        updates["period_type"] = "Q3"
+                    elif "Q2" in pid.upper():
+                        updates["period_type"] = "Q2"
+                    else:
+                        updates["period_type"] = "Q1"
+                
+                await target_db.tasks.update_one({"_id": t_doc["_id"]}, {"$set": updates})
         except Exception as exc:
             logger.warning(f"Data migration warning: {exc}")
 

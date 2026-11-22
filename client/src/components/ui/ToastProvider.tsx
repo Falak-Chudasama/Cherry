@@ -37,14 +37,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const push = useCallback(
     (kind: ToastKind, message: string) => {
-      const id = crypto.randomUUID();
-      setToasts((prev) => [...prev, { id, kind, message }]);
+      setToasts((prev) => {
+        if (prev.some((t) => t.message === message && t.kind === kind)) {
+          return prev;
+        }
+        const id = crypto.randomUUID();
+        window.setTimeout(() => dismiss(id), 3500);
+        return [...prev.slice(-2), { id, kind, message }];
+      });
       if (kind === 'error') {
         playFailed();
       } else {
         playNotification();
       }
-      window.setTimeout(() => dismiss(id), 4200);
     },
     [dismiss]
   );

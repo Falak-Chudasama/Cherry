@@ -54,6 +54,10 @@ export default {
           subtle: "rgba(16, 185, 129, 0.12)",
           text: "#059669",
         },
+        stone: {
+          750: "#34322e",
+          850: "#1f1e1b",
+        },
         canvas: {
           light: "#F8F9F5",
           dark: "#121310",
@@ -77,6 +81,10 @@ export default {
         sans: ['"Host Grotesk"', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         display: ['"Unbounded"', 'sans-serif'],
         heading: ['"Host Grotesk"', 'sans-serif'],
+      },
+      fontSize: {
+        '3xs': ['0.625rem', { lineHeight: '0.875rem' }],
+        '2xs': ['0.6875rem', { lineHeight: '0.9375rem' }],
       },
       borderRadius: {
         card: "1.25rem",

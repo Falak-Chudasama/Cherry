@@ -1,31 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  MessageSquare,
-  CalendarCheck2,
-  ShieldCheck,
-  BookOpen,
   Moon,
   Sun,
+  Sparkles,
+  Plus,
+  BookOpen,
 } from 'lucide-react';
 import { useTheme } from '../ui/ThemeProvider';
-import { playScroll, playBack } from '../../lib/sound';
+import { useEcosystem } from '../../context/EcosystemContext';
+import { playScroll, playEnter } from '../../lib/sound';
+import { NAV_ROUTES } from '../../lib/routes';
 
-export const NAV_ITEMS = [
-  { to: '/', label: 'Day', icon: CalendarCheck2 },
-  { to: '/chat', label: 'Chat', icon: MessageSquare },
-  { to: '/quarter', label: 'Quarter', icon: ShieldCheck },
-  { to: '/notes', label: 'Notes', icon: BookOpen },
-];
-
-interface HeaderProps {
-  onOpenShortcuts?: () => void;
-  onOpenMobileSidebar?: () => void;
-}
-
-export function Header({ onOpenShortcuts: _, onOpenMobileSidebar }: HeaderProps) {
+export function Header() {
   const { isDark, toggleTheme } = useTheme();
   const location = useLocation();
+  const navigate = useNavigate();
+  const {
+    activePeriodType,
+    openAiDrawer,
+    openTaskDrawer,
+  } = useEcosystem();
+
   const navContainerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
   const [pillStyle, setPillStyle] = useState<{
@@ -37,28 +33,23 @@ export function Header({ onOpenShortcuts: _, onOpenMobileSidebar }: HeaderProps)
   }>({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
   const [isReady, setIsReady] = useState(false);
 
-  const handleToggleTheme = () => {
-    playBack();
-    toggleTheme();
-  };
+  const primaryRoutes = NAV_ROUTES.filter((r) => !r.isSecondary);
 
   const updatePill = () => {
-    const activeItem = NAV_ITEMS.find((item) => {
+    const activeItem = primaryRoutes.find((item) => {
       if (item.to === '/') {
         return location.pathname === '/' || location.pathname === '/day';
       }
       return location.pathname === item.to;
     });
 
-    if (activeItem && itemRefs.current[activeItem.to] && navContainerRef.current) {
-      const navRect = navContainerRef.current.getBoundingClientRect();
-      const elRect = itemRefs.current[activeItem.to]!.getBoundingClientRect();
-
+    const activeEl = activeItem ? itemRefs.current[activeItem.to] : null;
+    if (activeEl && navContainerRef.current) {
       setPillStyle({
-        left: elRect.left - navRect.left,
-        top: elRect.top - navRect.top,
-        width: elRect.width,
-        height: elRect.height,
+        left: activeEl.offsetLeft,
+        top: activeEl.offsetTop,
+        width: activeEl.offsetWidth,
+        height: activeEl.offsetHeight,
         opacity: 1,
       });
     } else {
@@ -87,22 +78,32 @@ export function Header({ onOpenShortcuts: _, onOpenMobileSidebar }: HeaderProps)
           <Link
             to="/"
             onClick={() => playScroll()}
-            className="focus-ring flex items-center gap-2.5 rounded-full pr-1 transition hover:opacity-90"
+            className="focus-ring flex items-center gap-2.5 rounded-full pr-1 transition hover:opacity-90 shrink-0"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full glass-card p-1 shadow-2xs">
-              <img src="/cherry-icon.svg" alt="Cherry" className="h-6 w-6 object-contain" />
+              <img
+                src="/icons/cherry-icon.svg"
+                alt="Cherry"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/cherry-icon.svg';
+                }}
+                className="h-6 w-6 object-contain"
+              />
             </div>
             <span className="font-display text-base font-extrabold text-stone-900 dark:text-white tracking-tight">
               Cherry
             </span>
           </Link>
 
-          {/* Nav Links + Controls */}
-          <nav className="flex items-center gap-1 sm:gap-1.5" aria-label="Primary Desktop Navigation">
-            <div ref={navContainerRef} className="relative flex items-center gap-1">
+          {/* Minimalist Segmented Navigation Pill Bar (Today | Quarter/Surplus) */}
+          <nav className="flex items-center gap-1 shrink-0" aria-label="Primary Desktop Navigation">
+            <div
+              ref={navContainerRef}
+              className="relative flex items-center gap-1 p-1 rounded-full bg-transparent border border-black/[0.06] dark:border-white/[0.08]"
+            >
               {/* Dynamic Sliding Active Indicator Pill */}
               <div
-                className={`absolute rounded-full bg-stone-900 dark:bg-stone-100 pointer-events-none ${
+                className={`absolute top-0 left-0 rounded-full bg-stone-900 dark:bg-stone-100 shadow-xs pointer-events-none ${
                   isReady ? 'transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]' : ''
                 }`}
                 style={{
@@ -115,106 +116,183 @@ export function Header({ onOpenShortcuts: _, onOpenMobileSidebar }: HeaderProps)
                 aria-hidden="true"
               />
 
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  onClick={() => playScroll()}
-                  ref={(el) => {
-                    itemRefs.current[to] = el;
-                  }}
-                  className={({ isActive }) =>
-                    `relative z-10 focus-ring flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-200 ${
-                      isActive
-                        ? 'text-white dark:text-stone-900'
-                        : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{label}</span>
-                </NavLink>
-              ))}
+              {primaryRoutes.map(({ to, label, icon: Icon }) => {
+                const displayLabel =
+                  to === '/quarter' && activePeriodType === 'SURPLUS' ? 'Surplus' : label;
+
+                return (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={(e) => {
+                      playScroll();
+                      if (to === '/quarter' && location.search) {
+                        e.preventDefault();
+                        navigate('/quarter');
+                      }
+                    }}
+                    ref={(el) => {
+                      itemRefs.current[to] = el;
+                    }}
+                    className={({ isActive }) =>
+                      `relative z-10 focus-ring flex items-center gap-2 rounded-full px-4 py-1.5 text-xs sm:text-sm font-semibold transition-colors duration-200 ${
+                        isActive
+                          ? 'text-white dark:text-stone-900'
+                          : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                      }`
+                    }
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span>{displayLabel}</span>
+                  </NavLink>
+                );
+              })}
             </div>
+          </nav>
 
-            <div className="mx-1 h-4 w-px bg-stone-200 dark:bg-stone-700" aria-hidden="true" />
+          {/* Global Utility Cluster: Basket Notes, + New Task, Ask AI, Theme Toggle */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Basket Notes & Commands Utility Link */}
+            <NavLink
+              to="/notes"
+              onClick={() => playScroll()}
+              title="Basket Notes & Commands"
+              className={({ isActive }) =>
+                `focus-ring flex h-8 w-8 items-center justify-center rounded-full transition ${
+                  isActive
+                    ? 'bg-stone-200 dark:bg-stone-800 text-stone-900 dark:text-white'
+                    : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800/60'
+                }`
+              }
+            >
+              <BookOpen className="h-4 w-4" />
+            </NavLink>
 
-            {/* Dark/Light Mode Switcher */}
+            {/* + New Task Button */}
             <button
               type="button"
-              onClick={handleToggleTheme}
-              className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-              aria-label={isDark ? 'Switch to light mode (t)' : 'Switch to dark mode (t)'}
-              title={isDark ? 'Switch to light mode (t)' : 'Switch to dark mode (t)'}
+              onClick={() => {
+                playEnter();
+                openTaskDrawer({ mode: 'create' });
+              }}
+              className="focus-ring flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs font-semibold shadow-xs transition hover:scale-[1.02]"
+              title="Create Task (n)"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Task</span>
+            </button>
+
+            {/* Ask AI Button */}
+            <button
+              type="button"
+              onClick={() => {
+                playEnter();
+                openAiDrawer();
+              }}
+              className="focus-ring flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 text-xs font-medium border border-stone-200 dark:border-stone-700 transition"
+              title="Ask Cherry AI (/ or Ctrl+K)"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-cherry-flesh dark:text-cherry-blush" />
+              <span>AI</span>
+            </button>
+
+            <div className="h-4 w-px bg-stone-200 dark:bg-stone-700 mx-0.5" aria-hidden="true" />
+
+            {/* Theme Toggle */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {isDark ? (
-                <Sun className="h-4 w-4 text-cherry-blush transition-transform duration-200 hover:rotate-45" />
+                <Sun className="h-4 w-4 text-cherry-flesh transition-transform duration-200 hover:rotate-45" />
               ) : (
                 <Moon className="h-4 w-4 text-cherry-flesh transition-transform duration-200 hover:-rotate-12" />
               )}
             </button>
-          </nav>
+          </div>
         </div>
       </header>
 
-      {/* Mobile Top Header Bar */}
-      <header className="fixed top-0 inset-x-0 z-40 flex items-center justify-between glass-panel px-4 py-2.5 transition-colors duration-200 sm:hidden">
-        <div className="flex items-center gap-2">
-          <Link to="/" onClick={() => playScroll()} className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full glass-card p-0.5">
-              <img src="/cherry-icon.svg" alt="Cherry" className="h-5 w-5 object-contain" />
-            </div>
-            <span className="font-display text-sm font-extrabold text-stone-900 dark:text-white">
-              Cherry
-            </span>
-          </Link>
-          {onOpenMobileSidebar && (
-            <button
-              type="button"
-              onClick={onOpenMobileSidebar}
-              className="flex items-center gap-1 rounded-full bg-cherry-500/10 px-2 py-0.5 font-mono text-3xs font-bold text-cherry-600 dark:text-cherry-300 border border-cherry-500/20"
-              title="Open Accountability Pulse"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-cherry-leaf" />
-              <span>Pulse</span>
-            </button>
-          )}
-        </div>
+      {/* Mobile Sticky Top Header */}
+      <header className="sticky top-0 z-40 flex w-full items-center justify-between border-b border-black/5 bg-white/80 px-4 py-3 backdrop-blur-md dark:border-white/10 dark:bg-[#121310]/80 sm:hidden">
+        <Link
+          to="/"
+          onClick={() => playScroll()}
+          className="flex items-center gap-2"
+        >
+          <img
+            src="/icons/cherry-icon.svg"
+            alt="Cherry"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/cherry-icon.svg';
+            }}
+            className="h-6 w-6 object-contain"
+          />
+          <span className="font-display text-sm font-bold text-stone-900 dark:text-white">
+            Cherry
+          </span>
+        </Link>
+
+        {/* Mobile Navigation Pills */}
         <div className="flex items-center gap-1">
+          {primaryRoutes.map(({ to, label }) => {
+            const displayLabel =
+              to === '/quarter' && activePeriodType === 'SURPLUS' ? 'Surplus' : label;
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  `px-3 py-1 rounded-full text-xs font-semibold transition ${
+                    isActive
+                      ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900'
+                      : 'text-stone-600 dark:text-stone-400'
+                  }`
+                }
+              >
+                {displayLabel}
+              </NavLink>
+            );
+          })}
+        </div>
+
+        {/* Mobile Utility Icons */}
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={handleToggleTheme}
-            className="focus-ring flex h-7 w-7 items-center justify-center rounded-full text-stone-500 dark:text-stone-400"
-            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={() => {
+              playEnter();
+              openTaskDrawer({ mode: 'create' });
+            }}
+            className="p-1.5 rounded-full bg-cherry-flesh text-white"
+            aria-label="Create Task"
           >
-            {isDark ? <Sun className="h-3.5 w-3.5 text-cherry-blush" /> : <Moon className="h-3.5 w-3.5 text-cherry-flesh" />}
+            <Plus className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              playEnter();
+              openAiDrawer();
+            }}
+            className="p-1.5 rounded-full text-stone-600 dark:text-stone-300"
+            aria-label="Ask AI"
+          >
+            <Sparkles className="h-4 w-4 text-cherry-flesh" />
+          </button>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="p-1.5 rounded-full text-stone-600 dark:text-stone-300"
+            aria-label="Toggle theme"
+          >
+            {isDark ? <Sun className="h-4 w-4 text-cherry-flesh" /> : <Moon className="h-4 w-4 text-cherry-flesh" />}
           </button>
         </div>
       </header>
-
-      {/* Mobile Floating Bottom Dock */}
-      <nav
-        className="fixed bottom-3 inset-x-3 z-50 flex justify-around rounded-2xl glass-capsule py-2 px-1 shadow-lift transition-colors duration-200 sm:hidden"
-        aria-label="Primary Mobile Navigation"
-      >
-        {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            onClick={() => playScroll()}
-            className={({ isActive }) =>
-              `flex flex-col items-center gap-1 rounded-xl px-3 py-1 text-2xs font-semibold transition ${
-                isActive
-                  ? 'text-cherry-flesh dark:text-cherry-blush bg-cherry-500/10 dark:bg-cherry-400/15 font-bold'
-                  : 'text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100'
-              }`
-            }
-          >
-            <Icon className="h-4 w-4" />
-            <span>{label}</span>
-          </NavLink>
-        ))}
-      </nav>
     </>
   );
 }

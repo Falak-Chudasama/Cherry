@@ -232,12 +232,21 @@ class FeedbackService:
         )
         basket_used = basket_response is not None
 
-        if basket_response:
-            alignment_verdict = basket_response.strip()
+        # Determine concise status verdict (1-2 words strictly for the badge pill)
+        if bad_day:
+            verdict_badge = "Off Track"
+        elif len(completed_tasks) > 0 and routines_adhered:
+            verdict_badge = "Adherent"
+        elif routines_adhered:
+            verdict_badge = "On Track"
         else:
-            # Deterministic fallback
+            verdict_badge = "Needs Attention"
+
+        if basket_response:
+            narrative_report = basket_response.strip()
+        else:
             status_text = "Good day" if not bad_day else "Bad day (routine missed or limit breached)"
-            alignment_verdict = (
+            narrative_report = (
                 f"{status_text}. Completed {len(completed_tasks)} tasks with {focus_minutes:.0f} min focus. "
                 f"Adherence: {'Maintained' if routines_adhered else 'Violated'}."
             )
@@ -253,8 +262,8 @@ class FeedbackService:
             observations=observations,
             accomplishments=accomplishments,
             distractions_and_friction=distractions,
-            alignment_verdict=alignment_verdict,
-            actionable_improvement="Protect tomorrow morning for uninterrupted high-priority Must tasks.",
+            alignment_verdict=verdict_badge,
+            actionable_improvement=narrative_report,
             metrics=derived,
             generated_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -278,7 +287,20 @@ class FeedbackService:
 
     async def get_daily_summary(self, date_str: str) -> Optional[DailyFeedbackSummaryModel]:
         doc = await self.db.daily_summaries.find_one({"date_str": date_str}, sort=[("version", -1)])
-        return DailyFeedbackSummaryModel(**doc) if doc else None
+        if not doc:
+            return None
+        # Auto-heal older records where the full narrative was erroneously put into alignment_verdict
+        if len(doc.get("alignment_verdict", "")) > 30:
+            full_text = doc["alignment_verdict"]
+            doc["alignment_verdict"] = "On Track"
+            if not doc.get("actionable_improvement") or doc.get("actionable_improvement") == "Protect tomorrow morning for uninterrupted high-priority Must tasks.":
+                doc["actionable_improvement"] = full_text
+            # Persist healed fields back
+            await self.db.daily_summaries.update_one(
+                {"_id": doc["_id"]},
+                {"$set": {"alignment_verdict": "On Track", "actionable_improvement": full_text}}
+            )
+        return DailyFeedbackSummaryModel(**doc)
 
 
 feedback_service = FeedbackService()

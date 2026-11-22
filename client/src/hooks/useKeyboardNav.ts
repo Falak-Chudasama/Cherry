@@ -2,31 +2,44 @@ import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { playScroll, toggleSound } from '../lib/sound';
 import { useTheme } from '../components/ui/ThemeProvider';
-
-export const NAV_PAGES = [
-  '/',
-  '/chat',
-  '/quarter',
-  '/notes',
-] as const;
-
-export function normalizeNavPath(pathname: string): string {
-  if (pathname === '/day') return '/';
-  return pathname;
-}
+import { useEcosystem } from '../context/EcosystemContext';
+import { PRIMARY_NAV_PAGES, normalizeNavPath } from '../lib/routes';
 
 interface UseKeyboardNavOptions {
   onToggleShortcutsModal?: () => void;
-  onFocusInput?: () => void;
+  isShortcutsOpen?: boolean;
 }
 
 /**
- * Global keyboard navigation hook for Cherry.
+ * Global Keyboard Navigation Hook for Cherry.
+ * Strictly adheres to Fruit Family Specification:
+ * - 1-4: Primary tabs (Today, Quarter, Seasons, Notes)
+ * - 5: Full Chat Workbench (/chat)
+ * - Ctrl+Left / Ctrl+Right: Carousel cycle tabs
+ * - / or Ctrl+K: Summon 420px AI Drawer from any page
+ * - n: Quick Capture Modal (+ task / diet / violation)
+ * - t: Toggle Theme
+ * - m: Toggle Audio SFX
+ * - ?: Show Keyboard Shortcuts Modal
+ * - Esc: Close active modals/drawers or blur inputs
  */
 export function useKeyboardNav(options?: UseKeyboardNavOptions) {
   const location = useLocation();
   const navigate = useNavigate();
   const { toggleTheme } = useTheme();
+  const {
+    isAiDrawerOpen,
+    openAiDrawer,
+    closeAiDrawer,
+    isTaskDrawerOpen,
+    openTaskDrawer,
+    closeTaskDrawer,
+    isPlanModalOpen,
+    closePlanModal,
+    isQuickCaptureOpen,
+    openQuickCapture,
+    closeQuickCapture,
+  } = useEcosystem();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -37,30 +50,60 @@ export function useKeyboardNav(options?: UseKeyboardNavOptions) {
           target.tagName === 'TEXTAREA' ||
           target.isContentEditable);
 
-      // Handle Escape: blur active input or close modal
+      // Handle Escape: Close topmost overlay or blur active input
       if (e.key === 'Escape') {
         if (isEditingText) {
           (target as HTMLElement).blur();
+          return;
+        }
+        if (options?.isShortcutsOpen) {
+          options.onToggleShortcutsModal?.();
+          return;
+        }
+        if (isQuickCaptureOpen) {
+          closeQuickCapture();
+          return;
+        }
+        if (isTaskDrawerOpen) {
+          closeTaskDrawer();
+          return;
+        }
+        if (isPlanModalOpen) {
+          closePlanModal();
+          return;
+        }
+        if (isAiDrawerOpen) {
+          closeAiDrawer();
+          return;
         }
         return;
       }
 
-      // Handle '?' or Shift+'?' for shortcuts modal
+      // Handle '?' for shortcuts modal
       if ((e.key === '?' || (e.shiftKey && e.key === '/')) && !isEditingText) {
         e.preventDefault();
         options?.onToggleShortcutsModal?.();
         return;
       }
 
-      // Handle '/' to focus chat input
-      if (e.key === '/' && !isEditingText) {
+      // Handle '/' or 'Ctrl+K' / 'Cmd+K' to toggle AI Drawer
+      if ((e.key === '/' && !isEditingText) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
         e.preventDefault();
-        options?.onFocusInput?.();
-        const chatInput = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-          'input[data-chat-input="true"], textarea[data-chat-input="true"], input[type="text"]'
-        );
-        if (chatInput) {
-          chatInput.focus();
+        if (isAiDrawerOpen) {
+          closeAiDrawer();
+        } else {
+          openAiDrawer();
+        }
+        return;
+      }
+
+      // Handle 'n' for Create Task in TaskDrawer
+      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditingText) {
+        e.preventDefault();
+        if (isTaskDrawerOpen) {
+          closeTaskDrawer();
+        } else {
+          openTaskDrawer({ mode: 'create' });
         }
         return;
       }
@@ -79,15 +122,28 @@ export function useKeyboardNav(options?: UseKeyboardNavOptions) {
         return;
       }
 
-      // Handle number keys 1-4 for quick page jump
+      // Handle number keys 1-4
       if (['1', '2', '3', '4'].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditingText) {
-        const pageIdx = parseInt(e.key, 10) - 1;
-        const targetPage = NAV_PAGES[pageIdx];
+        const keyMap: Record<string, string> = {
+          '1': '/',
+          '2': '/quarter',
+          '3': '/notes',
+          '4': '/chat',
+        };
+        const targetPage = keyMap[e.key];
         if (targetPage && targetPage !== location.pathname) {
           e.preventDefault();
           playScroll();
           navigate(targetPage);
         }
+        return;
+      }
+
+      // Handle key 5 for full chat workbench
+      if (e.key === '5' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditingText) {
+        e.preventDefault();
+        playScroll();
+        navigate('/chat');
         return;
       }
 
@@ -100,16 +156,16 @@ export function useKeyboardNav(options?: UseKeyboardNavOptions) {
 
         e.preventDefault();
         const currentPath = normalizeNavPath(location.pathname);
-        const currentIndex = NAV_PAGES.indexOf(currentPath as any);
+        const currentIndex = PRIMARY_NAV_PAGES.indexOf(currentPath as any);
 
         let nextIndex = 0;
         if (isRight) {
-          nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % NAV_PAGES.length;
+          nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % PRIMARY_NAV_PAGES.length;
         } else if (isLeft) {
-          nextIndex = currentIndex === -1 ? NAV_PAGES.length - 1 : (currentIndex - 1 + NAV_PAGES.length) % NAV_PAGES.length;
+          nextIndex = currentIndex === -1 ? PRIMARY_NAV_PAGES.length - 1 : (currentIndex - 1 + PRIMARY_NAV_PAGES.length) % PRIMARY_NAV_PAGES.length;
         }
 
-        const targetPath = NAV_PAGES[nextIndex];
+        const targetPath = PRIMARY_NAV_PAGES[nextIndex];
         if (targetPath && targetPath !== location.pathname) {
           playScroll();
           navigate(targetPath);
@@ -121,5 +177,20 @@ export function useKeyboardNav(options?: UseKeyboardNavOptions) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [location.pathname, navigate, toggleTheme, options]);
+  }, [
+    location.pathname,
+    navigate,
+    toggleTheme,
+    options,
+    isAiDrawerOpen,
+    isTaskDrawerOpen,
+    isPlanModalOpen,
+    isQuickCaptureOpen,
+    openAiDrawer,
+    closeAiDrawer,
+    closeTaskDrawer,
+    closePlanModal,
+    openQuickCapture,
+    closeQuickCapture,
+  ]);
 }

@@ -1,28 +1,29 @@
 """
 Conversational Assistant Service for Cherry.
 The primary operating interface of Cherry.
-Coordinates natural language queries, structured intent recognition,
-safe typed tool executions, and rich conversational UI cards.
+Standardized to the Basket 3-Tier Multi-Chat Architecture (cherry.chats collection).
+Coordinates 2-call GBNF pipeline, Live Reality Snapshots, and rich Compose cards.
 """
 import uuid
-import json
 import logging
-from datetime import datetime, date
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 from app.core.database import get_db
-from app.core import calendar as cal
+from app.models.conversation_models import ChatMessageModel, CardType
+from app.ai.context_builder import build_live_reality_snapshot
+from app.ai.services.intent_router import route_intent
+from app.ai.services.plan_crafter import craft_plan
+from app.ai.services.task_crafter import craft_task
+from app.ai.services.query_executor import execute_db_query
+from app.ai.services.action_executor import stage_quick_action
+from app.ai.grammars.title_grammar import CHAT_TITLE_GRAMMAR, parse_chat_title
 from app.adapters.basket_adapter import basket_adapter
-from app.adapters.lemon_adapter import lemon_adapter
-from app.services.calendar_service import calendar_service
-from app.services.task_service import task_service
-from app.services.plan_service import plan_service
-from app.services.focus_service import focus_service
-from app.services.feedback_service import feedback_service
-from app.services.accountability_service import accountability_service
-from app.services.notes_service import notes_service
-from app.models.conversation_models import ChatMessageModel, ConversationModel, CardType
 
 logger = logging.getLogger(__name__)
+
+
+def _now_str() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
 class ChatService:
@@ -31,289 +32,230 @@ class ChatService:
         return get_db()
 
     async def list_conversations(self) -> List[Dict[str, Any]]:
-        """List all saved conversations sorted by updated_at descending."""
-        cursor = self.db.conversations.find({}, {"_id": 0}).sort("updated_at", -1)
+        cursor = self.db.chats.find(
+            {"application": "cherry"},
+            {"_id": 1, "session_id": 1, "title": 1, "messages": 1, "updated_at": 1, "created_at": 1}
+        ).sort("updated_at", -1)
+
         results = []
         async for doc in cursor:
+            session_id = doc.get("session_id") or str(doc.get("_id"))
             messages = doc.get("messages", [])
             last_content = messages[-1].get("content", "") if messages else ""
             if len(last_content) > 60:
                 last_content = last_content[:60] + "..."
+
+            c_at = doc.get("created_at", "")
+            u_at = doc.get("updated_at", "")
+            c_str = c_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(c_at, "strftime") else str(c_at)
+            u_str = u_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(u_at, "strftime") else str(u_at)
+
             results.append({
-                "conversation_id": doc["conversation_id"],
-                "title": doc.get("title", "New Conversation"),
-                "context_date": doc.get("context_date", ""),
-                "active_quarter_id": doc.get("active_quarter_id", ""),
+                "conversation_id": session_id,
+                "session_id": session_id,
+                "title": doc.get("title", "New Chat"),
+                "application": "cherry",
                 "message_count": len(messages),
                 "preview": last_content,
-                "created_at": doc.get("created_at"),
-                "updated_at": doc.get("updated_at"),
+                "created_at": c_str,
+                "updated_at": u_str,
             })
         return results
 
-    async def create_new_conversation(self, title: Optional[str] = None) -> ConversationModel:
-        """Create a fresh conversation session with initial assistant greeting."""
-        today = cal.today_local()
-        today_str = cal.format_date(today)
-        active_q = await calendar_service.get_active_quarter(today)
-        q_id = active_q.quarter_id if active_q else cal.get_quarter_id(today.year, today.month, 1)
+    async def create_new_conversation(self, title: Optional[str] = None) -> Dict[str, Any]:
+        session_id = str(uuid.uuid4())
+        now = _now_str()
 
-        conv_id = str(uuid.uuid4())
-        initial_msg = ChatMessageModel(
-            message_id=str(uuid.uuid4()),
-            role="assistant",
-            content="Hello! I am Cherry, your conversational operating assistant. How can we organize your work, plan a Quarter, or review your focus today?",
-            card_type="text",
-        )
-        conv = ConversationModel(
-            conversation_id=conv_id,
-            title=title or "New Chat",
-            messages=[initial_msg],
-            context_date=today_str,
-            active_quarter_id=q_id,
-        )
-        await self.db.conversations.insert_one(conv.model_dump())
-        return conv
+        initial_msg = {
+            "message_id": str(uuid.uuid4()),
+            "role": "assistant",
+            "content": "Hello! I am Cherry, your operating assistant. How can we organize your work, plan a Quarter, or review focus today?",
+            "card_type": "text",
+            "created_at": now,
+        }
 
-    async def delete_conversation(self, conversation_id: str) -> bool:
-        """Delete a conversation and its messages from MongoDB."""
-        res = await self.db.conversations.delete_one({"conversation_id": conversation_id})
+        doc = {
+            "session_id": session_id,
+            "title": title or "New Chat",
+            "application": "cherry",
+            "messages": [initial_msg],
+            "created_at": now,
+            "updated_at": now,
+        }
+        await self.db.chats.insert_one(doc)
+
+        return {
+            "conversation_id": session_id,
+            "session_id": session_id,
+            "title": doc["title"],
+            "application": "cherry",
+            "messages": [initial_msg],
+            "created_at": now,
+            "updated_at": now,
+        }
+
+    async def get_or_create_conversation(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        if session_id:
+            doc = await self.db.chats.find_one({
+                "$or": [{"session_id": session_id}, {"conversation_id": session_id}],
+                "application": "cherry",
+            })
+            if doc:
+                doc["conversation_id"] = doc.get("session_id") or str(doc.get("_id"))
+                doc["_id"] = str(doc.get("_id"))
+                return doc
+
+        # Fallback to most recent session
+        latest = await self.db.chats.find_one({"application": "cherry"}, sort=[("updated_at", -1)])
+        if latest:
+            latest["conversation_id"] = latest.get("session_id") or str(latest.get("_id"))
+            latest["_id"] = str(latest.get("_id"))
+            return latest
+
+        return await self.create_new_conversation()
+
+    async def delete_conversation(self, session_id: str) -> bool:
+        res = await self.db.chats.delete_one({
+            "$or": [{"session_id": session_id}, {"conversation_id": session_id}],
+            "application": "cherry",
+        })
         return res.deleted_count > 0
 
-    async def update_conversation_title(self, conversation_id: str, title: str) -> bool:
-        """Update the title of a conversation."""
-        res = await self.db.conversations.update_one(
-            {"conversation_id": conversation_id},
-            {"$set": {"title": title, "updated_at": datetime.utcnow()}}
+    async def update_conversation_title(self, session_id: str, new_title: str) -> bool:
+        res = await self.db.chats.update_one(
+            {"$or": [{"session_id": session_id}, {"conversation_id": session_id}], "application": "cherry"},
+            {"$set": {"title": new_title, "updated_at": _now_str()}},
         )
         return res.modified_count > 0
 
-    async def get_or_create_conversation(self, conversation_id: Optional[str] = None) -> ConversationModel:
-        today = cal.today_local()
-        today_str = cal.format_date(today)
-        active_q = await calendar_service.get_active_quarter(today)
-        q_id = active_q.quarter_id if active_q else cal.get_quarter_id(today.year, today.month, 1)
-
-        if conversation_id:
-            doc = await self.db.conversations.find_one({"conversation_id": conversation_id})
-            if doc:
-                return ConversationModel(**doc)
-
-        conv_id = conversation_id or str(uuid.uuid4())
-        initial_msg = ChatMessageModel(
-            message_id=str(uuid.uuid4()),
-            role="assistant",
-            content="Hello! I am Cherry, your conversational operating assistant. How can we organize your work, plan a Quarter, or review your focus today?",
-            card_type="text",
-        )
-
-        conv = ConversationModel(
-            conversation_id=conv_id,
-            title="Today's Session",
-            messages=[initial_msg],
-            context_date=today_str,
-            active_quarter_id=q_id,
-        )
-        await self.db.conversations.insert_one(conv.model_dump())
-        return conv
-
     async def handle_user_message(
         self,
-        conversation_id: str,
+        session_id: str,
         user_text: str,
     ) -> ChatMessageModel:
         """
-        Process user message:
-        1. Classify intent into typed domain operations (Planning, Todo, Focus, Feedback, Friction, Notes, Query)
-        2. Execute verified backend service logic
-        3. Formulate response with structured card payload if applicable
+        Processes a user message through the Plum-inspired 2-Call GBNF architecture:
+        1. Context Snapshot
+        2. Call 1 Intent Router
+        3. Call 2 Execution / Card Generation / Conversation
         """
-        conv = await self.get_or_create_conversation(conversation_id)
-        today = cal.today_local()
-        today_str = cal.format_date(today)
-
-        # Store user message
+        now = _now_str()
         user_msg = ChatMessageModel(
             message_id=str(uuid.uuid4()),
             role="user",
             content=user_text,
             card_type="text",
-        )
-        await self.db.conversations.update_one(
-            {"conversation_id": conversation_id},
-            {"$push": {"messages": user_msg.model_dump()}, "$set": {"updated_at": datetime.utcnow()}},
+            card_data=None,
+            created_at=now,
         )
 
-        # Auto-title conversation if it has a generic title
-        if conv.title in ("New Conversation", "New Chat", "Today's Session"):
-            clean_title = user_text.strip()
-            if len(clean_title) > 36:
-                clean_title = clean_title[:36] + "..."
-            if clean_title:
-                await self.db.conversations.update_one(
-                    {"conversation_id": conversation_id},
-                    {"$set": {"title": clean_title.capitalize()}},
-                )
+        await self.db.chats.update_one(
+            {"session_id": session_id, "application": "cherry"},
+            {
+                "$push": {"messages": user_msg.model_dump()},
+                "$set": {"updated_at": now},
+            },
+            upsert=True,
+        )
 
-        lower = user_text.lower().strip()
+        # 1. Deterministic Live Reality Snapshot
+        snapshot = await build_live_reality_snapshot(session_id=session_id, user_prompt=user_text)
+        snapshot_text = snapshot["snapshot_text"]
+        period_id = snapshot["period_id"]
+        period_type = snapshot["period_type"]
 
-        # --- INTENT ROUTING ---
+        # 2. Call 1: Fast Intent Router
+        intent = await route_intent(user_text, snapshot_context=snapshot_text)
 
-        # 1. Plan Quarter Intent
-        if any(w in lower for w in ("plan next quarter", "plan quarter", "plan the quarter", "quarter proposal")):
-            plan = await plan_service.propose_quarter_plan(
-                quarter_id=conv.active_quarter_id,
-                user_intent=user_text,
-            )
-            card_data = {
-                "plan_id": plan.plan_id,
-                "quarter_id": plan.quarter_id,
-                "version": plan.version,
-                "goals": [g.model_dump() for g in plan.goals],
-                "tasks": [t.model_dump() for t in plan.tasks],
-                "rationale": plan.rationale,
-            }
-            response_text = (
-                f"I have prepared a proposal for Quarter {plan.quarter_id} (Version {plan.version}). "
-                f"Please review the goals and subtasks below. You must explicitly approve it before it becomes active."
-            )
-            return await self._save_assistant_reply(
-                conversation_id, response_text, card_type="quarter_plan_proposal", card_data=card_data
-            )
+        assistant_content = ""
+        card_type: CardType = "text"
+        card_data: Optional[Dict[str, Any]] = None
 
-        # 2. Daily Todo Draft Intent
-        if any(w in lower for w in ("generate tomorrow's plan", "tomorrow's plan", "generate today's plan", "todo draft", "daily draft")):
-            target_date = cal.format_date(today + cal.timedelta(days=1)) if "tomorrow" in lower else today_str
-            draft = await plan_service.generate_daily_todo_draft(target_date, is_retrospective=False)
-            card_data = {
-                "draft_id": draft.draft_id,
-                "date_str": draft.date_str,
-                "items": [i.model_dump() for i in draft.items],
-                "status": draft.status,
-            }
-            response_text = f"Here is the daily Todo draft for {target_date}. Review the items and click finalize when ready."
-            return await self._save_assistant_reply(
-                conversation_id, response_text, card_type="todo_draft", card_data=card_data
-            )
+        if intent == "make_plan":
+            plan = await craft_plan(user_prompt=user_text, snapshot_text=snapshot_text, period_id=period_id)
+            card_type = "plan_composer"
+            card_data = plan
+            assistant_content = f"I've drafted a Quarter Plan for **{period_id}** with {len(plan.get('deliverables', []))} core deliverables. Open it in the Composer Modal to customize."
 
-        # 3. Focus / Pomodoro Intent
-        if any(w in lower for w in ("start focus", "start pomodoro", "focus mode", "begin sprint")):
-            session = await focus_service.start_pomodoro(date_str=today_str, task_title="Conversational Focus Sprint")
-            card_data = {
-                "session_id": session.session_id,
-                "planned_minutes": session.planned_minutes,
-                "dns_enabled": session.dns_enabled_by_session,
-                "status": session.status,
-            }
-            response_text = (
-                f"Focus Mode activated for {session.planned_minutes} minutes. "
-                f"Lemon DNS restrictions have been requested ({'Enabled' if session.dns_enabled_by_session else 'DNS Pending'})."
-            )
-            return await self._save_assistant_reply(
-                conversation_id, response_text, card_type="focus_control", card_data=card_data
-            )
+        elif intent == "create_task":
+            task = await craft_task(user_prompt=user_text, snapshot_text=snapshot_text, period_id=period_id, period_type=period_type)
+            card_type = "task_composer"
+            card_data = task
+            assistant_content = f"Structured new task: **{task.get('title')}**. Open it in the Composer Modal to review or save."
 
-        if any(w in lower for w in ("stop focus", "end focus", "cancel focus", "stop pomodoro")):
-            active = await self.db.pomodoro_sessions.find_one({"status": "active"})
-            if active:
-                session = await focus_service.stop_pomodoro(active["session_id"], status="completed", outcome_notes="Stopped via chat")
-                return await self._save_assistant_reply(
-                    conversation_id,
-                    "Focus Mode stopped. Lemon DNS deactivation requested.",
-                    card_type="focus_control",
-                    card_data={"session_id": active["session_id"], "status": "completed"},
-                )
+        elif intent == "db_query":
+            q_res = await execute_db_query(user_text, snapshot_text=snapshot_text)
+            card_type = "query_result"
+            card_data = q_res
+            assistant_content = q_res.get("summary", "Search completed.")
+
+        elif intent == "quick_action":
+            staged = await stage_quick_action(user_text, snapshot_text=snapshot_text)
+            if staged.get("needs_clarification"):
+                assistant_content = staged.get("clarification_question", "Could you provide more details?")
+                card_type = "text"
+                card_data = None
             else:
-                return await self._save_assistant_reply(
-                    conversation_id, "There is no active Focus Mode session running currently."
-                )
+                card_type = "action_confirm"
+                card_data = staged
+                assistant_content = f"Prepared action: {staged.get('summary', 'Action proposal')}. Please approve or reject below."
 
-        # 4. Daily Feedback / Review Intent
-        if any(w in lower for w in ("daily feedback", "today's feedback", "yesterday's feedback", "how was today", "daily closure", "review today")):
-            target_date = cal.format_date(today - cal.timedelta(days=1)) if "yesterday" in lower else today_str
-            summary = await feedback_service.generate_daily_feedback(target_date)
-            card_data = {
-                "summary_id": summary.summary_id,
-                "date_str": summary.date_str,
-                "verdict": summary.alignment_verdict,
-                "observations": [o.model_dump() for o in summary.observations],
-                "metrics": summary.metrics.model_dump(),
-            }
-            response_text = f"Daily Feedback Report for {target_date}: {summary.alignment_verdict}"
-            return await self._save_assistant_reply(
-                conversation_id, response_text, card_type="feedback_report", card_data=card_data
+        else:
+            # Conversational Chat
+            system_prompt = (
+                f"You are Cherry, the intelligent personal operating system assistant.\n"
+                f"Respond concisely, directly, and helpful without emojis or meta-commentary.\n"
+                f"Ground your answers in the Live Reality Snapshot below:\n\n"
+                f"{snapshot_text}"
             )
-
-        # 5. Friction Logging Intent
-        if any(w in lower for w in ("friction:", "log friction", "distracted because", "interrupted by")):
-            clean_desc = user_text.replace("log friction", "").replace("friction:", "").strip()
-            log = await feedback_service.log_friction(
-                date_str=today_str,
-                category="interruption" if "interrupt" in lower else "procrastination",
-                description=clean_desc or "User reported distraction during workday.",
+            chat_res = await basket_adapter.completion(
+                prompt=user_text,
+                system_prompt=system_prompt,
+                temperature=0.4,
+                max_tokens=512,
             )
-            return await self._save_assistant_reply(
-                conversation_id, f"Friction recorded for {today_str}: '{log.description}'. This will be factored into daily feedback."
-            )
+            assistant_content = chat_res.get("content", "") or "I am here. How can I help you organize your sprint or review your routines?"
 
-        # 6. Notes Intent
-        if lower.startswith("note:") or lower.startswith("remember:"):
-            content = user_text.split(":", 1)[1].strip()
-            title = content[:30] + ("..." if len(content) > 30 else "")
-            note = await notes_service.create_note(title=title, content=content)
-            return await self._save_assistant_reply(
-                conversation_id, f"Saved personal context note '{title}'. It is accessible in Notes and preserved for planning."
-            )
-
-        # 7. General Assistant Retrieval & Answering
-        # Retrieve context from active quarter, today's tasks, and notes
-        tasks = await task_service.get_tasks_for_day(today_str)
-        q_doc = await self.db.quarters.find_one({"quarter_id": conv.active_quarter_id})
-        remaining_keys = q_doc.get("remaining_keys", 3) if q_doc else 3
-        jp_total = await accountability_service.get_daily_junk_points_total(today_str)
-
-        context_str = (
-            f"Context: Today is {today_str}. Active Quarter: {conv.active_quarter_id}.\n"
-            f"Remaining Quarter Keys: {remaining_keys} QK. Today's Junk Points: {jp_total} JP.\n"
-            f"Today's tasks: {len(tasks)} ({len([t for t in tasks if t.status == 'completed'])} completed).\n"
-        )
-
-        llm_reply = await basket_adapter.chat_completion(
-            messages=[
-                {"role": "system", "content": context_str},
-                {"role": "user", "content": user_text},
-            ],
-            temperature=0.4,
-            max_tokens=450,
-        )
-
-        reply_content = llm_reply or (
-            f"Today is {today_str} in Quarter {conv.active_quarter_id}. "
-            f"You have {remaining_keys} Quarter Keys and {jp_total} Junk Points recorded. "
-            f"How else can I assist with your planning or focus?"
-        )
-
-        return await self._save_assistant_reply(conversation_id, reply_content, card_type="text")
-
-    async def _save_assistant_reply(
-        self,
-        conversation_id: str,
-        content: str,
-        card_type: CardType = "text",
-        card_data: Optional[Dict[str, Any]] = None,
-    ) -> ChatMessageModel:
-        msg = ChatMessageModel(
+        assistant_msg = ChatMessageModel(
             message_id=str(uuid.uuid4()),
             role="assistant",
-            content=content,
+            content=assistant_content,
             card_type=card_type,
             card_data=card_data,
+            created_at=_now_str(),
         )
-        await self.db.conversations.update_one(
-            {"conversation_id": conversation_id},
-            {"$push": {"messages": msg.model_dump()}, "$set": {"updated_at": datetime.utcnow()}},
+
+        await self.db.chats.update_one(
+            {"session_id": session_id, "application": "cherry"},
+            {
+                "$push": {"messages": assistant_msg.model_dump()},
+                "$set": {"updated_at": _now_str()},
+            },
         )
-        return msg
+
+        # 4. Turn 1 Auto-Titling (<= 6 words, CHAT_TITLE_GRAMMAR)
+        session_doc = await self.db.chats.find_one({"session_id": session_id, "application": "cherry"})
+        if session_doc:
+            user_msgs = [m for m in session_doc.get("messages", []) if m.get("role") == "user"]
+            if len(user_msgs) == 1 and session_doc.get("title", "") in ("", "New Conversation"):
+                try:
+                    title_res = await basket_adapter.completion(
+                        prompt=f"User: {user_text}\nAssistant: {assistant_content[:150]}",
+                        system_prompt="Generate a concise, natural chat title of 6 words or fewer for this conversation.",
+                        grammar=CHAT_TITLE_GRAMMAR,
+                        temperature=0.2,
+                        max_tokens=32,
+                    )
+                    auto_title = parse_chat_title(title_res.get("content", ""))
+                    if auto_title and auto_title != "New Conversation":
+                        await self.db.chats.update_one(
+                            {"session_id": session_id, "application": "cherry"},
+                            {"$set": {"title": auto_title}},
+                        )
+                except Exception as e:
+                    logger.debug(f"Auto-titling failed or skipped: {e}")
+
+        return assistant_msg
 
 
 chat_service = ChatService()

@@ -1,17 +1,6 @@
 import React, { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useLocation, type Location } from 'react-router-dom';
-
-/**
- * Route order matching the visual primary navigation bar sequence:
- * Chat (0) -> Day (1) -> Quarter (2) -> Notes (3)
- */
-const ROUTE_ORDER: Record<string, number> = {
-  '/': 0,
-  '/chat': 0,
-  '/day': 1,
-  '/quarter': 2,
-  '/notes': 3,
-};
+import { ROUTE_ORDER } from '../../lib/routes';
 
 interface DirectionalPageTransitionProps {
   children: ReactElement;

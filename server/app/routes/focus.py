@@ -22,10 +22,29 @@ class StopFocusPayload(BaseModel):
     outcome_notes: Optional[str] = None
 
 
+class ToggleLemonDnsPayload(BaseModel):
+    enable: Optional[bool] = None
+
+
 @router.get("/status")
 async def get_focus_status():
     state = await focus_service.get_focus_state()
     return state.model_dump()
+
+
+@router.post("/complete")
+async def complete_focus(payload: StopFocusPayload):
+    """Auto or manual completion transitioning to 10m break phase."""
+    break_session = await focus_service.complete_pomodoro_and_start_break(payload.session_id)
+    return break_session.model_dump()
+
+
+@router.post("/lemon/toggle")
+async def toggle_lemon_dns_endpoint(payload: Optional[ToggleLemonDnsPayload] = None):
+    """Standalone Lemon DNS toggle with honest error reporting on blackout/offline."""
+    enable = payload.enable if payload else None
+    res = await focus_service.toggle_lemon_dns(enable)
+    return res
 
 
 @router.post("/start")

@@ -21,6 +21,26 @@ class ApprovePlanPayload(BaseModel):
     approval_notes: Optional[str] = None
 
 
+class CommitPlanFromComposerPayload(BaseModel):
+    period_id: str
+    quarter_goal: str
+    deliverables: List[Dict[str, Any]]
+
+
+@router.post("/quarter/commit")
+async def commit_plan_from_composer(payload: CommitPlanFromComposerPayload):
+    """
+    Commit an approved plan from the Composer Modal into real tasks.
+    Database remains untouched until this endpoint is invoked.
+    """
+    res = await plan_service.commit_plan_from_composer(
+        period_id=payload.period_id,
+        quarter_goal=payload.quarter_goal,
+        deliverables=payload.deliverables,
+    )
+    return res
+
+
 @router.post("/quarter/propose")
 async def propose_quarter_plan(payload: ProposePlanPayload):
     plan = await plan_service.propose_quarter_plan(

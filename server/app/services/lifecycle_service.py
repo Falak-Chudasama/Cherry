@@ -337,5 +337,73 @@ class LifecycleService:
         await self.db.notifications.insert_one(notif.model_dump())
         return notif
 
+    # --- Live 23:00 & 00:00 Background Scheduler ---
+
+    async def run_lifecycle_tick(self) -> Dict[str, Any]:
+        """
+        Single tick for the 30-second live background scheduler.
+        Runs in Asia/Kolkata timezone:
+        - At or past 23:00: fires 23:00 end-of-day closure job (feedback & daily_closure) using lifecycle_jobs idempotency keys.
+        - At or past 00:00: ensures today exists, generates routine occurrences, and if transition from yesterday wasn't processed, catches up yesterday.
+        """
+        now = cal.now_local()
+        today_d = now.date()
+        today_str = cal.format_date(today_d)
+        actions_taken = []
+
+        # 1. 23:00 End-of-Day Job
+        if now.hour >= settings.CLOSURE_HOUR:  # 23:00
+            closure_key = f"closure:{today_str}"
+            job = await self.enqueue_job(
+                idempotency_key=closure_key,
+                calendar_date=today_str,
+                op_type="daily_closure",
+            )
+            if job.status in ("pending", "failed"):
+                # Ensure feedback job exists & runs
+                fb_key = f"feedback:{today_str}"
+                fb_job = await self.enqueue_job(
+                    idempotency_key=fb_key,
+                    calendar_date=today_str,
+                    op_type="lemon_ingestion",
+                )
+                if fb_job.status in ("pending", "failed"):
+                    await self._execute_feedback_job(fb_job)
+                await self._execute_closure_job(job, today_d)
+                actions_taken.append(f"executed_closure:{today_str}")
+
+        # 2. 00:00 Transition & Hierarchy Assurance
+        await calendar_service.ensure_verse_exists(today_d.year)
+        await calendar_service.ensure_season_exists(today_d.year, today_d.month)
+        await calendar_service.ensure_day_exists(today_d)
+        await task_service.generate_routine_occurrences_for_day(today_d)
+
+        # Check yesterday's closure if not already closed
+        yesterday_d = today_d - timedelta(days=1)
+        yesterday_str = cal.format_date(yesterday_d)
+        yesterday_doc = await self.db.days.find_one({"date_str": yesterday_str})
+        if yesterday_doc and yesterday_doc.get("status") != "closed":
+            await self._catch_up_date(yesterday_d)
+            actions_taken.append(f"catch_up_yesterday:{yesterday_str}")
+
+        return {"timestamp": now.isoformat(), "actions": actions_taken}
+
+    async def start_scheduler_loop(self) -> None:
+        """Background loop ticking every 30s in Asia/Kolkata."""
+        import asyncio
+        logger.info("Starting live background lifecycle scheduler (tick every 30s in Asia/Kolkata)...")
+        while True:
+            try:
+                await self.run_lifecycle_tick()
+            except asyncio.CancelledError:
+                logger.info("Lifecycle scheduler loop cancelled gracefully.")
+                break
+            except Exception as e:
+                logger.error(f"Error during lifecycle scheduler tick: {e}", exc_info=True)
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                break
+
 
 lifecycle_service = LifecycleService()

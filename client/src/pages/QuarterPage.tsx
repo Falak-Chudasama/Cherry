@@ -1,340 +1,597 @@
-import React, { useState, useEffect } from "react";
-import { Key, ShieldCheck, Plus, CheckCircle2, Target, Sparkles } from "lucide-react";
-import { api } from "../lib/api";
-import { playEnter, playNotification, playFailed, playScroll } from "../lib/sound";
-import { useToast } from "../components/ui/ToastProvider";
-import { useEcosystem } from "../context/EcosystemContext";
-import { PageShell } from "../components/layout/PageShell";
-import { QuarterPlan } from "../types";
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  Sparkles,
+  Plus,
+  CheckSquare,
+  Square,
+  Clock,
+  Circle,
+  CheckCircle2,
+  Flame,
+  Repeat,
+} from 'lucide-react';
+import { api } from '../lib/api';
+import { playEnter, playNotification, playFailed, playScroll } from '../lib/sound';
+import { useToast } from '../components/ui/ToastProvider';
+import { useEcosystem } from '../context/EcosystemContext';
+import { Task, KanbanStatus, TaskTier, PeriodType } from '../types';
 
-const JP_PRESETS = [
-  { label: "Healthy Snack", points: 5 },
-  { label: "Processed Snack", points: 15 },
-  { label: "Fast Food", points: 25 },
-  { label: "Sugary Beverage", points: 15 },
-  { label: "Dessert", points: 20 },
+const KANBAN_COLUMNS: Array<{ status: KanbanStatus; label: string }> = [
+  { status: 'Not started', label: 'Not Started' },
+  { status: 'In progress', label: 'In Progress' },
+  { status: 'Done', label: 'Done' },
 ];
 
 export const QuarterPage: React.FC = () => {
-  const { activeQuarterId, todayStr, refreshEcosystem } = useEcosystem();
-  const { push } = useToast();
+  const {
+    activeQuarterId,
+    openTaskDrawer,
+    openPlanModal,
+    workspaceRevision,
+    bumpWorkspaceRevision,
+  } = useEcosystem();
 
-  const [accountability, setAccountability] = useState<any>(null);
-  const [junkPointsData, setJunkPointsData] = useState<any>(null);
-  const [plan, setPlan] = useState<QuarterPlan | null>(null);
-  const [planning, setPlanning] = useState(false);
+  const [searchParams] = useSearchParams();
+  const periodIdParam = searchParams.get('period_id');
+  const currentPeriodId = periodIdParam || activeQuarterId;
 
-  // Junk point form state
-  const [foodItem, setFoodItem] = useState("");
-  const [points, setPoints] = useState(10);
+  const isSurplus = currentPeriodId.includes('SURPLUS');
+  const currentPeriodType: PeriodType = isSurplus
+    ? 'SURPLUS'
+    : currentPeriodId.includes('Q4')
+    ? 'Q4'
+    : currentPeriodId.includes('Q3')
+    ? 'Q3'
+    : currentPeriodId.includes('Q2')
+    ? 'Q2'
+    : 'Q1';
+
+  const quarterNum = isSurplus ? null : parseInt(currentPeriodType.replace('Q', ''), 10);
+  const totalDays = isSurplus ? 3 : 7;
+
+  const { push: toast } = useToast();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDayFilter, setSelectedDayFilter] = useState<number | 'ALL'>('ALL');
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+
+  const dayFilterContainerRef = useRef<HTMLDivElement>(null);
+  const dayFilterItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [dayPillStyle, setDayPillStyle] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    opacity: number;
+  }>({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
+  const [isDayPillReady, setIsDayPillReady] = useState(false);
+
+  const updateDayPill = () => {
+    const key = String(selectedDayFilter);
+    const el = dayFilterItemRefs.current[key];
+    if (el && dayFilterContainerRef.current) {
+      setDayPillStyle({
+        left: el.offsetLeft,
+        top: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+        opacity: 1,
+      });
+    } else {
+      setDayPillStyle((prev) => ({ ...prev, opacity: 0 }));
+    }
+  };
 
   useEffect(() => {
-    if (activeQuarterId) {
-      loadQuarterData();
+    updateDayPill();
+    const timer = setTimeout(() => {
+      setIsDayPillReady(true);
+      updateDayPill();
+    }, 50);
+    window.addEventListener('resize', updateDayPill);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateDayPill);
+    };
+  }, [selectedDayFilter]);
+
+  // Compute Period Meta & Date Ranges
+  const periodMeta = useMemo(() => {
+    const match = currentPeriodId.match(/^(\d{4})-(\d{2})-(Q[1-4]|SURPLUS)$/);
+    if (!match) {
+      return {
+        label: isSurplus ? 'Surplus Period' : `Quarter ${quarterNum}`,
+        dateRange: 'Active Period',
+        days: Array.from({ length: totalDays }, (_, i) => ({ dayNum: i + 1, dateLabel: `D${i + 1}` })),
+      };
     }
-  }, [activeQuarterId, todayStr]);
+    const year = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    const type = match[3];
+    const daysInMonth = new Date(year, month, 0).getDate();
 
-  const loadQuarterData = async () => {
-    if (!activeQuarterId) return;
+    let startDay = 1;
+    let endDay = 7;
+    let label = `Quarter 1`;
+
+    if (type === 'Q1') {
+      startDay = 1;
+      endDay = 7;
+      label = `Quarter 1`;
+    } else if (type === 'Q2') {
+      startDay = 8;
+      endDay = 14;
+      label = `Quarter 2`;
+    } else if (type === 'Q3') {
+      startDay = 15;
+      endDay = 21;
+      label = `Quarter 3`;
+    } else if (type === 'Q4') {
+      startDay = 22;
+      endDay = 28;
+      label = `Quarter 4`;
+    } else if (type === 'SURPLUS') {
+      startDay = 29;
+      endDay = daysInMonth;
+      label = `Surplus Period`;
+    }
+
+    const monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    const monthStr = monthNames[month - 1];
+    const dateRange = `${monthStr} ${startDay} – ${monthStr} ${endDay}`;
+
+    const actualTotalDays = endDay - startDay + 1;
+    const days = Array.from({ length: actualTotalDays }, (_, i) => ({
+      dayNum: i + 1,
+      dateLabel: `D${i + 1}`,
+    }));
+
+    return { label, dateRange, days };
+  }, [currentPeriodId, isSurplus, quarterNum, totalDays]);
+
+  const loadPeriodTasks = async () => {
     try {
-      const acc = await api.getQuarterAccountability(activeQuarterId);
-      setAccountability(acc);
-
-      const jp = await api.getDayJunkPoints(todayStr);
-      setJunkPointsData(jp);
-
-      const p = await api.getActivePlan(activeQuarterId);
-      setPlan(p);
+      setLoading(true);
+      const data = await api.getPeriodTasks(currentPeriodId);
+      setTasks(data || []);
     } catch (err) {
-      console.debug("Failed to load quarter data", err);
-    }
-  };
-
-  const handleAddJunkPoint = async (item: string, pts: number) => {
-    if (!item.trim() || !activeQuarterId) return;
-
-    playEnter();
-    try {
-      const res = await api.addJunkPoint({
-        date_str: todayStr,
-        quarter_id: activeQuarterId,
-        food_item: item.trim(),
-        base_score: Number(pts),
-        portion_factor: 1.0,
-      });
-      setFoodItem("");
-      if (res.quarter_key_spent) {
-        push("error", "Junk Point limit breached (>50 JP)! 1 Quarter Key deducted.");
-      } else {
-        push("info", `Logged ${item} (+${res.points} JP).`);
-      }
-      playNotification();
-      loadQuarterData();
-      refreshEcosystem();
-    } catch {
-      playFailed();
-      push("error", "Failed to add junk points.");
-    }
-  };
-
-  const handleAutoPlan = async () => {
-    setPlanning(true);
-    playEnter();
-    try {
-      // Send chat request to plan the quarter
-      const res = await api.sendMessage(`Plan the quarter ${activeQuarterId} based on active goals.`);
-      if (res.reply.card_type === "quarter_plan_proposal" && res.reply.card_data) {
-        // Approve the proposal immediately into active quarter plan
-        await api.approveQuarterPlan(res.reply.card_data.plan_id, "Auto-approved via Quarter page");
-        playNotification();
-        push("success", `Quarter Plan ${activeQuarterId} synthesized and activated.`);
-        await loadQuarterData();
-        await refreshEcosystem();
-      }
-    } catch {
-      playFailed();
-      push("error", "Failed to generate quarter plan.");
+      console.debug('Failed to load period tasks', err);
     } finally {
-      setPlanning(false);
+      setLoading(false);
     }
   };
 
-  const totalJp = junkPointsData?.total_junk_points ?? 0;
-  const jpPct = Math.min(100, Math.round((totalJp / 50) * 100));
-  const remainingKeys = accountability?.remaining_keys ?? 3;
+  useEffect(() => {
+    loadPeriodTasks();
+  }, [currentPeriodId, workspaceRevision]);
 
-  // 7 days in Quarter III (Days 15 through 21)
-  const quarterDays = [15, 16, 17, 18, 19, 20, 21];
-  const currentDayNum = parseInt(todayStr.split("-")[2], 10) || 16;
+  // Drag and Drop handlers
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    e.dataTransfer.setData('text/plain', taskId);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggingTaskId(taskId);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetStatus: KanbanStatus) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain') || draggingTaskId;
+    setDraggingTaskId(null);
+
+    if (!taskId) return;
+    const task = tasks.find((t) => t.task_id === taskId);
+    if (!task || task.status === targetStatus) return;
+
+    playScroll();
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) => (t.task_id === taskId ? { ...t, status: targetStatus } : t))
+    );
+
+    try {
+      await api.updateTaskStatus(taskId, targetStatus);
+      playNotification();
+      bumpWorkspaceRevision();
+    } catch {
+      playFailed();
+      toast('error', 'Failed to update task column.');
+      loadPeriodTasks();
+    }
+  };
+
+  // Toggle subtask directly in card
+  const handleToggleSubtask = async (
+    taskId: string,
+    subtaskId: string,
+    currentVal: boolean,
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    playScroll();
+    try {
+      const updated = await api.toggleSubtask(taskId, subtaskId, !currentVal);
+      setTasks((prev) => prev.map((t) => (t.task_id === taskId ? updated : t)));
+      playNotification();
+      bumpWorkspaceRevision();
+    } catch {
+      playFailed();
+      toast('error', 'Failed to update subtask.');
+    }
+  };
+
+  // Day filtering logic: When ALL is selected, show ALL tasks of this quarter!
+  // When a specific day D_k is selected, show tasks tagged for D_k (task-level or subtask-level)
+  const filteredTasks = useMemo(() => {
+    if (selectedDayFilter === 'ALL') return tasks;
+    return tasks.filter((t) => {
+      // 1. Check task-level scheduled days
+      const days =
+        t.scheduled_days ||
+        (t.start_day !== undefined && t.end_day !== undefined
+          ? Array.from({ length: t.end_day - t.start_day + 1 }, (_, i) => t.start_day! + i)
+          : null);
+      if (days && days.includes(selectedDayFilter)) return true;
+
+      // 2. Check subtasks
+      if (t.subtasks && t.subtasks.length > 0) {
+        return t.subtasks.some((st) => {
+          const start = st.start_day ?? 1;
+          const end = st.end_day ?? totalDays;
+          return selectedDayFilter >= start && selectedDayFilter <= end;
+        });
+      }
+      return false;
+    });
+  }, [tasks, selectedDayFilter, totalDays]);
+
+  const completedCount = useMemo(() => {
+    return tasks.filter((t) => t.status === 'Done').length;
+  }, [tasks]);
+
+  const progressPercent = useMemo(() => {
+    if (tasks.length === 0) return 0;
+    return Math.round((completedCount / tasks.length) * 100);
+  }, [tasks, completedCount]);
+
+  const getTierBadge = (tier?: TaskTier | string) => {
+    const norm = (tier || '').toLowerCase();
+    if (norm.includes('must')) {
+      return (
+        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+          <Flame className="h-3 w-3 text-rose-500" />
+          <span>Must Do</span>
+        </span>
+      );
+    }
+    if (norm.includes('should')) {
+      return (
+        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+          <Clock className="h-3 w-3 text-orange-500" />
+          <span>Should Do</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+        <Repeat className="h-3 w-3 text-purple-500" />
+        <span>Routine</span>
+      </span>
+    );
+  };
+
+  const getTaskDaysBadge = (task: Task) => {
+    const days =
+      task.scheduled_days ||
+      (task.start_day !== undefined && task.end_day !== undefined
+        ? Array.from({ length: task.end_day - task.start_day + 1 }, (_, i) => task.start_day! + i)
+        : null);
+    if (!days || days.length === 0) return null;
+    const tDays = isSurplus ? 3 : 7;
+    const label =
+      days.length === tDays
+        ? 'All Days'
+        : days.length === 1
+        ? `D${days[0]}`
+        : `D${days[0]}–${days[days.length - 1]}`;
+
+    return (
+      <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-200/60 dark:border-stone-700/60 shrink-0">
+        {label}
+      </span>
+    );
+  };
 
   return (
-    <PageShell
-      title="Quarter Accountability"
-      description={`${activeQuarterId || "Active Quarter"} • Fixed 7-day sprint`}
-      icon={<ShieldCheck className="h-4 w-4" />}
-      action={
-        <div className="flex items-center gap-1.5">
-          {[1, 2, 3].map((keyIdx) => (
-            <div
-              key={keyIdx}
-              className={`flex h-8 w-8 items-center justify-center rounded-xl glass-card transition ${
-                keyIdx <= remainingKeys
-                  ? "text-cherry-flesh border-cherry-500/30 bg-cherry-500/10"
-                  : "opacity-25 text-stone-400"
-              }`}
-              title={keyIdx <= remainingKeys ? `Key #${keyIdx} Active` : `Key #${keyIdx} Deducted`}
-            >
-              <Key className="h-4 w-4" />
-            </div>
-          ))}
-          <span className="ml-1 text-xs font-mono font-bold text-stone-700 dark:text-stone-300">
-            {remainingKeys}/3 Keys
-          </span>
-        </div>
-      }
-    >
-      <div className="space-y-6">
-        {/* 7-Day Sprint Timeline */}
-        <div className="glass-panel rounded-2xl p-5 shadow-soft space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300">
-              7-Day Sprint Timeline
-            </span>
-            <span className="text-2xs text-stone-400 font-mono">
-              Day {quarterDays.indexOf(currentDayNum) + 1} of 7
-            </span>
-          </div>
-
-          <div className="grid grid-cols-7 gap-2">
-            {quarterDays.map((d) => {
-              const isToday = d === currentDayNum;
-              const isPast = d < currentDayNum;
-              return (
-                <div
-                  key={d}
-                  className={`p-2.5 rounded-xl text-center border transition ${
-                    isToday
-                      ? "bg-cherry-500/15 border-cherry-500/40 text-cherry-flesh font-bold"
-                      : isPast
-                      ? "bg-black/[0.02] dark:bg-white/[0.02] border-black/5 dark:border-white/5 text-stone-400"
-                      : "glass-card text-stone-600 dark:text-stone-300"
-                  }`}
-                >
-                  <span className="text-2xs block uppercase text-stone-400 font-mono">Day</span>
-                  <span className="text-sm font-bold font-mono">{d}</span>
-                  {isToday && (
-                    <span className="mt-1 block text-2xs uppercase font-extrabold text-cherry-flesh">
-                      Today
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Junk Points & Diet Section */}
-          <div className="glass-panel rounded-2xl p-5 shadow-soft space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300 block">
-                  Diet Tracker (Junk Points)
-                </span>
-                <span className="text-2xs text-stone-400">Deducts 1 Key if limit is exceeded</span>
-              </div>
-              <span
-                className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-full ${
-                  totalJp > 50
-                    ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300 font-extrabold"
-                    : "text-stone-800 dark:text-stone-200"
-                }`}
-              >
-                {totalJp} / 50 JP
+    <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
+      {/* Quarter Header */}
+      <div className="glass-panel rounded-3xl p-5 sm:p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-soft space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900">
+                {periodMeta.dateRange}
+              </span>
+              <span className="text-xs font-mono text-stone-400">
+                {currentPeriodId}
               </span>
             </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-stone-900 dark:text-white">
+              {periodMeta.label} Kanban
+            </h1>
+          </div>
 
-            {/* Progress Meter */}
-            <div className="space-y-1">
-              <div className="h-2 w-full rounded-full bg-stone-200 dark:bg-stone-800 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-300 ${
-                    totalJp > 50 ? "bg-rose-500" : totalJp > 35 ? "bg-amber-500" : "bg-emerald-500"
-                  }`}
-                  style={{ width: `${jpPct}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-2xs text-stone-400 font-mono">
-                <span>0 JP</span>
-                <span>50 JP Threshold</span>
-              </div>
-            </div>
-
-            {/* Quick Preset Buttons */}
-            <div className="space-y-1.5 pt-1">
-              <span className="text-2xs font-semibold text-stone-400 block uppercase">Quick Presets</span>
-              <div className="flex flex-wrap gap-1.5">
-                {JP_PRESETS.map((p) => (
-                  <button
-                    key={p.label}
-                    type="button"
-                    onClick={() => {
-                      playScroll();
-                      handleAddJunkPoint(p.label, p.points);
-                    }}
-                    className="btn-interactive text-2xs px-2.5 py-1 rounded-full glass-card border border-stone-200/80 dark:border-white/10 text-stone-700 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white"
-                  >
-                    <span>{p.label}</span>
-                    <span className="text-stone-400 font-mono ml-1">+{p.points}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Custom Input */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleAddJunkPoint(foodItem, points);
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                playEnter();
+                openTaskDrawer({
+                  period_id: currentPeriodId,
+                  period_type: currentPeriodType,
+                  mode: 'create',
+                });
               }}
-              className="flex gap-2 pt-2 border-t border-black/5 dark:border-white/10"
+              className="focus-ring flex items-center gap-1.5 px-4 py-2 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition hover:scale-[1.02]"
             >
-              <input
-                type="text"
-                placeholder="Custom food/drink item..."
-                value={foodItem}
-                onChange={(e) => setFoodItem(e.target.value)}
-                className="flex-1 px-3 py-1.5 rounded-xl glass-card text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none"
-              />
-              <input
-                type="number"
-                value={points}
-                onChange={(e) => setPoints(Number(e.target.value))}
-                className="w-16 px-2 py-1.5 rounded-xl glass-card text-xs text-stone-800 dark:text-stone-200 font-mono focus:outline-none"
-                title="Points"
-              />
-              <button
-                type="submit"
-                disabled={!foodItem.trim()}
-                className="btn-glass-primary !py-1.5 !px-3 text-xs font-bold"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </form>
+              <Plus className="h-4 w-4" />
+              <span>New Task</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                playEnter();
+                openPlanModal({
+                  period_id: currentPeriodId,
+                  period_type: currentPeriodType,
+                });
+              }}
+              className="focus-ring flex items-center gap-1.5 px-3.5 py-2 rounded-full glass-card text-stone-700 dark:text-stone-300 text-xs sm:text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5 transition"
+            >
+              <Sparkles className="h-4 w-4 text-cherry-flesh dark:text-cherry-blush" />
+              <span>AI Plan</span>
+            </button>
           </div>
+        </div>
 
-          {/* Goals & Key Accountability Ledger */}
-          <div className="glass-panel rounded-2xl p-5 shadow-soft space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300 block">
-                  Quarter Goals
-                </span>
-                <span className="text-2xs text-stone-400">Committed sprint backlog</span>
-              </div>
-              <button
-                onClick={handleAutoPlan}
-                disabled={planning}
-                className="btn-glass-primary !py-1 !px-2.5 text-2xs font-bold"
-              >
-                <Sparkles className="h-3 w-3" />
-                <span>{planning ? "Planning..." : "AI Plan"}</span>
-              </button>
-            </div>
-
-            {plan && plan.goals && plan.goals.length > 0 ? (
-              <div className="space-y-2">
-                {plan.goals.map((g, idx) => (
-                  <div key={idx} className="p-2.5 rounded-xl glass-card flex items-start gap-2 text-xs">
-                    <Target className="h-3.5 w-3.5 text-cherry-flesh mt-0.5 shrink-0" />
-                    <div>
-                      <h4 className="font-semibold text-stone-800 dark:text-stone-200">{g.title}</h4>
-                      {g.description && <p className="text-2xs text-stone-400 mt-0.5">{g.description}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-6 text-center space-y-2 glass-card rounded-xl p-3">
-                <p className="text-xs text-stone-400">No quarter goals committed yet.</p>
-                <button
-                  onClick={handleAutoPlan}
-                  disabled={planning}
-                  className="btn-glass-primary text-xs font-semibold"
-                >
-                  <Sparkles className="h-3 w-3" />
-                  <span>{planning ? "Synthesizing Plan..." : "Plan Quarter 3 with AI"}</span>
-                </button>
-              </div>
-            )}
-
-            {/* Spent Keys Ledger */}
-            <div className="pt-2 border-t border-black/5 dark:border-white/10 space-y-2">
-              <span className="text-2xs font-bold uppercase tracking-wider text-stone-400 block">
-                Quarter Key Ledger ({remainingKeys}/3 Remaining)
-              </span>
-              {accountability?.violations && accountability.violations.length > 0 ? (
-                <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                  {accountability.violations.map((v: any, idx: number) => (
-                    <div key={idx} className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs">
-                      <div className="flex justify-between font-bold text-rose-700 dark:text-rose-300">
-                        <span>{v.violation_type || "Violation"}</span>
-                        <span className="font-mono">-1 QK</span>
-                      </div>
-                      <p className="text-stone-600 dark:text-stone-400 text-2xs mt-0.5">{v.description || v.reason}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 p-2 rounded-xl glass-card text-xs text-stone-600 dark:text-stone-400">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                  <span>Clean Ledger. 0 Quarter Keys spent this week.</span>
-                </div>
-              )}
-            </div>
+        {/* Progress Bar */}
+        <div className="space-y-1.5 pt-2 border-t border-black/[0.05] dark:border-white/[0.08]">
+          <div className="flex items-center justify-between text-xs text-stone-600 dark:text-stone-400">
+            <span>
+              {completedCount} of {tasks.length} tasks completed
+            </span>
+            <span className="font-semibold">{progressPercent}%</span>
+          </div>
+          <div className="h-1.5 w-full bg-stone-200/80 dark:bg-stone-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-cherry-flesh transition-all duration-500 ease-out rounded-full"
+              style={{ width: `${progressPercent}%` }}
+            />
           </div>
         </div>
       </div>
-    </PageShell>
+
+      {/* Day Filter Strip (Kiwi Segmented Style with Dynamic Sliding Pill) */}
+      <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
+        <div
+          ref={dayFilterContainerRef}
+          className="relative flex items-center gap-1 p-1 rounded-full bg-transparent border border-black/[0.06] dark:border-white/[0.08]"
+        >
+          {/* Dynamic Sliding Active Indicator Pill */}
+          <div
+            className={`absolute top-0 left-0 rounded-full bg-stone-900 dark:bg-stone-100 shadow-xs pointer-events-none ${
+              isDayPillReady ? 'transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]' : ''
+            }`}
+            style={{
+              transform: `translate3d(${dayPillStyle.left}px, ${dayPillStyle.top}px, 0)`,
+              width: `${dayPillStyle.width}px`,
+              height: `${dayPillStyle.height}px`,
+              opacity: dayPillStyle.opacity,
+              willChange: 'transform, width',
+            }}
+            aria-hidden="true"
+          />
+
+          <button
+            type="button"
+            ref={(el) => {
+              dayFilterItemRefs.current['ALL'] = el;
+            }}
+            onClick={() => {
+              playScroll();
+              setSelectedDayFilter('ALL');
+            }}
+            className={`relative z-10 px-3 py-1 rounded-full text-xs font-semibold transition-colors duration-200 ${
+              selectedDayFilter === 'ALL'
+                ? 'text-white dark:text-stone-900'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+            }`}
+          >
+            All Days
+          </button>
+          {periodMeta.days.map(({ dayNum, dateLabel }) => {
+            const isSelected = selectedDayFilter === dayNum;
+            return (
+              <button
+                key={dayNum}
+                type="button"
+                ref={(el) => {
+                  dayFilterItemRefs.current[String(dayNum)] = el;
+                }}
+                onClick={() => {
+                  playScroll();
+                  setSelectedDayFilter(dayNum);
+                }}
+                className={`relative z-10 px-3 py-1 rounded-full text-xs font-semibold transition-colors duration-200 ${
+                  isSelected
+                    ? 'text-white dark:text-stone-900'
+                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+                }`}
+              >
+                {dateLabel}
+              </button>
+            );
+          })}
+        </div>
+
+        <span className="text-xs text-stone-400 font-medium hidden sm:inline">
+          {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'}
+        </span>
+      </div>
+
+      {/* 3-Column Kanban Board */}
+      {loading ? (
+        <div className="flex min-h-[30vh] items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-stone-300 dark:border-stone-700 border-t-cherry-flesh" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {KANBAN_COLUMNS.map((col) => {
+            const colTasks = filteredTasks.filter((t) => t.status === col.status);
+            return (
+              <div
+                key={col.status}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, col.status)}
+                className="flex flex-col rounded-3xl glass-panel border border-black/[0.06] dark:border-white/[0.08] p-4 min-h-[500px] shadow-soft space-y-3"
+              >
+                {/* Column Header */}
+                <div className="flex items-center justify-between pb-2 border-b border-black/[0.04] dark:border-white/[0.06]">
+                  <div className="flex items-center gap-2">
+                    {col.status === 'Done' ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    ) : col.status === 'In progress' ? (
+                      <Clock className="h-4 w-4 text-blue-500" />
+                    ) : (
+                      <Circle className="h-4 w-4 text-stone-400" />
+                    )}
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300">
+                      {col.label}
+                    </h3>
+                  </div>
+                  <span className="font-mono text-2xs px-2 py-0.5 rounded-full bg-black/[0.03] dark:bg-white/[0.05] text-stone-500 font-bold">
+                    {colTasks.length}
+                  </span>
+                </div>
+
+                {/* Column Task Cards */}
+                <div className="flex-1 space-y-2.5 overflow-y-auto pr-0.5">
+                  {colTasks.length === 0 ? (
+                    <div className="h-28 flex items-center justify-center border border-dashed border-black/10 dark:border-white/10 rounded-2xl text-stone-400 text-xs">
+                      Drop tasks here
+                    </div>
+                  ) : (
+                    colTasks.map((task) => {
+                      const isDone = task.status === 'Done';
+                      const subtasks = task.subtasks || [];
+                      const doneSubtasks = subtasks.filter((s) => s.is_completed).length;
+
+                      return (
+                        <div
+                          key={task.task_id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, task.task_id)}
+                          onClick={() => openTaskDrawer({ task, mode: 'edit' })}
+                          className={`glass-card rounded-2xl p-3.5 border transition-all cursor-pointer group shadow-2xs hover:border-black/20 dark:hover:border-white/20 hover:scale-[1.01] ${
+                            isDone
+                              ? 'border-black/[0.04] dark:border-white/[0.05] opacity-75'
+                              : 'border-black/[0.07] dark:border-white/[0.09]'
+                          }`}
+                        >
+                          <div className="space-y-2">
+                            {/* Card Top: Tier Badge & Title */}
+                            <div className="flex items-start justify-between gap-2">
+                              <h4
+                                className={`text-xs font-semibold leading-snug flex-1 ${
+                                  isDone
+                                    ? 'line-through text-stone-400 dark:text-stone-500'
+                                    : 'text-stone-900 dark:text-white'
+                                }`}
+                              >
+                                {task.title}
+                              </h4>
+                              <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                                {getTierBadge(task.tier)}
+                                {getTaskDaysBadge(task)}
+                              </div>
+                            </div>
+
+                            {task.description && (
+                              <p className="text-2xs text-stone-500 line-clamp-2">
+                                {task.description}
+                              </p>
+                            )}
+
+                            {/* Subtasks checklist */}
+                            {subtasks.length > 0 && (
+                              <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.06] space-y-1">
+                                <div className="flex items-center justify-between text-3xs text-stone-400 font-mono">
+                                  <span>Subtasks</span>
+                                  <span>
+                                    {doneSubtasks}/{subtasks.length}
+                                  </span>
+                                </div>
+                                {subtasks.slice(0, 3).map((st) => (
+                                  <div
+                                    key={st.subtask_id}
+                                    onClick={(e) =>
+                                      handleToggleSubtask(
+                                        task.task_id,
+                                        st.subtask_id,
+                                        st.is_completed,
+                                        e
+                                      )
+                                    }
+                                    className="flex items-center justify-between p-1 rounded hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition text-2xs select-none"
+                                  >
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      {st.is_completed ? (
+                                        <CheckSquare className="h-3 w-3 text-emerald-500 shrink-0" />
+                                      ) : (
+                                        <Square className="h-3 w-3 text-stone-400 shrink-0" />
+                                      )}
+                                      <span
+                                        className={`truncate ${
+                                          st.is_completed
+                                            ? 'line-through text-stone-400'
+                                            : 'text-stone-700 dark:text-stone-300'
+                                        }`}
+                                      >
+                                        {st.title}
+                                      </span>
+                                    </div>
+                                    {(st.start_day !== undefined || st.end_day !== undefined) && (
+                                      <span className="font-mono text-3xs px-1 rounded bg-stone-200/60 dark:bg-stone-800 text-stone-500 shrink-0">
+                                        D{st.start_day ?? 1}–{st.end_day ?? 7}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                                {subtasks.length > 3 && (
+                                  <span className="text-3xs text-stone-400 pl-1 block">
+                                    +{subtasks.length - 3} more subtasks
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 };

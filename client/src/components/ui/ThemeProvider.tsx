@@ -24,43 +24,6 @@ export function getTimeBasedTheme(): Theme {
 }
 
 function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'light';
-
-  // If a URL parameter ?theme=light or ?theme=dark is provided, respect it
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const urlTheme = params.get('theme');
-    if (urlTheme === 'light' || urlTheme === 'dark') {
-      return urlTheme;
-    }
-  } catch {
-    // fallback
-  }
-
-  // If user already explicitly manually chose a mode in this session, respect it
-  try {
-    const isManual = sessionStorage.getItem(MANUAL_KEY);
-    if (isManual === 'true') {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved === 'light' || saved === 'dark') {
-        return saved;
-      }
-    }
-  } catch {
-    // fallback
-  }
-
-  // Check persisted localStorage
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === 'light' || saved === 'dark') {
-      return saved;
-    }
-  } catch {
-    // fallback
-  }
-
-  // Otherwise, automatically detect current time of day on launch
   return getTimeBasedTheme();
 }
 

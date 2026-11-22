@@ -1,6 +1,7 @@
 import React from "react";
 import { Award, CheckCircle2, AlertTriangle } from "lucide-react";
 import { ObservationItem, DerivedMetrics } from "../../types";
+import { MarkdownRenderer } from "../ui/MarkdownRenderer";
 
 interface FeedbackCardProps {
   data: {
@@ -35,15 +36,13 @@ export const FeedbackCard: React.FC<FeedbackCardProps> = ({ data }) => {
               : "bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30"
           }`}
         >
-          {data.metrics.bad_day ? "Bad Day (Violations)" : "Good Day (Adherent)"}
+          {data.metrics.bad_day ? "High Distraction" : "Adherent"}
         </span>
       </div>
 
       {/* Alignment Verdict */}
       <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/5 dark:border-white/5">
-        <p className="text-stone-800 dark:text-stone-200 font-medium leading-relaxed">
-          {data.verdict}
-        </p>
+        <MarkdownRenderer content={data.verdict} variant="compact" />
       </div>
 
       {/* Metrics Row */}

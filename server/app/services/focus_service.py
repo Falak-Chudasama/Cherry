@@ -21,23 +21,149 @@ class FocusService:
         return get_db()
 
     async def get_focus_state(self) -> FocusStateModel:
-        """Inspect current focus session and verify Lemon synchronization."""
-        # Find active session
+        """Inspect current focus session, handle 60/10 auto-transition, and verify Lemon synchronization."""
+        # Find active focus session
         active_session = await self.db.pomodoro_sessions.find_one({"status": "active"})
         lemon_dns = await lemon_adapter.get_dns_status()
         dns_enabled = lemon_dns.get("dns_enabled", False)
 
-        is_active = active_session is not None
-        session_id = active_session["session_id"] if active_session else None
+        now = datetime.utcnow()
+
+        # Check if active focus session has exceeded its duration (60m)
+        if active_session:
+            started = active_session.get("started_at", now)
+            paused_sec = active_session.get("total_paused_seconds", 0.0)
+            elapsed = (now - started).total_seconds() - paused_sec
+            planned_sec = active_session.get("planned_minutes", 60) * 60
+
+            if elapsed >= planned_sec:
+                # Auto-transition to 10-minute break
+                logger.info(f"Session {active_session['session_id']} reached 00:00. Transitioning to 10m break phase.")
+                break_session = await self.complete_pomodoro_and_start_break(active_session["session_id"])
+                return FocusStateModel(
+                    is_focus_active=False,
+                    current_session_id=break_session.session_id,
+                    dns_protection_active=False,
+                    lemon_synchronized=True,
+                    last_reconciled_at=now,
+                    phase="break",
+                    break_started_at=break_session.started_at,
+                    break_minutes=10,
+                )
+
+            return FocusStateModel(
+                is_focus_active=True,
+                current_session_id=active_session["session_id"],
+                dns_protection_active=dns_enabled,
+                lemon_synchronized=(dns_enabled is True) if "error" not in lemon_dns else False,
+                last_reconciled_at=now,
+                error_message=lemon_dns.get("error"),
+                phase="focus",
+                started_at=active_session.get("started_at"),
+                planned_minutes=active_session.get("planned_minutes", 60),
+            )
+
+        # Check for active break phase
+        break_session = await self.db.pomodoro_sessions.find_one({"status": "break"})
+        if break_session:
+            b_started = break_session.get("started_at", now)
+            b_elapsed = (now - b_started).total_seconds()
+            if b_elapsed >= (break_session.get("planned_minutes", 10) * 60):
+                # Break completed
+                await self.db.pomodoro_sessions.update_one(
+                    {"session_id": break_session["session_id"]},
+                    {"$set": {"status": "completed", "ended_at": now}},
+                )
+            else:
+                return FocusStateModel(
+                    is_focus_active=False,
+                    current_session_id=break_session["session_id"],
+                    dns_protection_active=dns_enabled,
+                    lemon_synchronized=True,
+                    last_reconciled_at=now,
+                    phase="break",
+                    break_started_at=b_started,
+                    break_minutes=break_session.get("planned_minutes", 10),
+                )
 
         return FocusStateModel(
-            is_focus_active=is_active,
-            current_session_id=session_id,
+            is_focus_active=False,
+            current_session_id=None,
             dns_protection_active=dns_enabled,
-            lemon_synchronized=(is_active == dns_enabled) if "error" not in lemon_dns else False,
-            last_reconciled_at=datetime.utcnow(),
+            lemon_synchronized=(dns_enabled is False) if "error" not in lemon_dns else False,
+            last_reconciled_at=now,
             error_message=lemon_dns.get("error"),
+            phase="idle",
         )
+
+    async def complete_pomodoro_and_start_break(self, session_id: str) -> PomodoroSessionModel:
+        """
+        Complete active 60m focus session, credit focus minutes, disable Lemon DNS,
+        and launch distinct 10-minute Break phase (never counted as focused work).
+        """
+        now = datetime.utcnow()
+        doc = await self.db.pomodoro_sessions.find_one({"session_id": session_id})
+        date_str = doc.get("date_str") if doc else cal.format_date(cal.today_local())
+        planned_mins = doc.get("planned_minutes", 60) if doc else 60
+
+        # 1. Close focus session
+        await self.db.pomodoro_sessions.update_one(
+            {"session_id": session_id},
+            {
+                "$set": {
+                    "status": "completed",
+                    "ended_at": now,
+                    "outcome_notes": "Completed 60m focus block.",
+                }
+            },
+        )
+
+        # 2. Add focus minutes to Day record
+        await self.db.days.update_one(
+            {"date_str": date_str},
+            {"$inc": {"focus_minutes_total": planned_mins}},
+        )
+
+        # 3. Disable Lemon DNS filtering for break
+        await lemon_adapter.disable_dns()
+
+        # 4. Create distinct 10-minute Break phase record
+        break_session = PomodoroSessionModel(
+            session_id=str(uuid.uuid4()),
+            date_str=date_str,
+            planned_minutes=10,
+            started_at=now,
+            status="break",
+            dns_enabled_by_session=False,
+            outcome_notes="10-minute rest break (not counted in focus minutes).",
+        )
+        await self.db.pomodoro_sessions.insert_one(break_session.model_dump())
+        logger.info(f"Launched 10-minute Break phase {break_session.session_id} for {date_str}.")
+        return break_session
+
+    async def toggle_lemon_dns(self, enable: Optional[bool] = None) -> Dict[str, Any]:
+        """
+        Direct toggle for Lemon DNS shield with honest error surfacing on blackout/offline.
+        """
+        curr = await lemon_adapter.get_dns_status()
+        if "error" in curr:
+            return {"success": False, "dns_enabled": False, "error": curr["error"]}
+
+        target = enable if enable is not None else not curr.get("dns_enabled", False)
+        if target:
+            res = await lemon_adapter.enable_dns()
+        else:
+            res = await lemon_adapter.disable_dns()
+
+        actual = res.get("dns_enabled", target if res.get("success") else False)
+        err = res.get("error")
+        success = (actual == target) and (err is None)
+
+        return {
+            "success": success,
+            "dns_enabled": actual,
+            "error": err,
+        }
 
     async def start_pomodoro(
         self,

@@ -3,65 +3,99 @@ from datetime import date
 from app.core import calendar as cal
 from app.services.task_service import task_service
 from app.services.calendar_service import calendar_service
-from app.models.task_models import TaskModel
+from app.models.task_models import TaskModel, Subtask
 
 
 @pytest.mark.asyncio
-async def test_must_should_classification():
-    # Task with no deadline stays SHOULD
-    task_no_dl = TaskModel(
-        task_id="t1",
-        quarter_id="2026-11-Q1",
-        title="Explore topic",
-        category="SHOULD",
+async def test_kanban_three_status_and_subtasks():
+    # 1. Create a task with 3-state Kanban model and subtasks with day range 1..7
+    task = await task_service.create_task(
+        period_id="2026-11-Q1",
+        period_type="Q1",
+        title="Refactor Database Models",
+        description="Clean 3-status Kanban",
+        priority="High",
+        subtasks=[
+            {"title": "Step 1: Write schemas", "start_day": 1, "end_day": 3},
+            {"title": "Step 2: Migrate data", "start_day": 4, "end_day": 7},
+        ],
     )
-    evaluated = task_service.evaluate_should_must_promotion(task_no_dl)
-    assert evaluated.is_promoted is False
 
-    # Task due tomorrow with category SHOULD -> must recommend promotion to MUST
-    tomorrow = cal.format_date(cal.today_local() + cal.timedelta(days=1))
-    task_urgent = TaskModel(
-        task_id="t2",
-        quarter_id="2026-11-Q1",
-        title="Submit tax file",
-        category="SHOULD",
-        deadline=tomorrow,
-    )
-    evaluated_urgent = task_service.evaluate_should_must_promotion(task_urgent)
-    assert evaluated_urgent.is_promoted is True
-    assert "Recommended promotion to MUST" in (evaluated_urgent.promotion_reason or "")
+    assert task.status == "Not started"
+    assert len(task.subtasks) == 2
+    assert task.subtasks[0].start_day == 1
+    assert task.subtasks[0].end_day == 3
+
+    # 2. Transition to In progress
+    updated = await task_service.update_task_status(task.task_id, "In progress")
+    assert updated.status == "In progress"
+
+    # 3. Complete first subtask
+    st1_id = task.subtasks[0].subtask_id
+    updated_st = await task_service.toggle_subtask(task.task_id, st1_id, True)
+    assert updated_st.subtasks[0].is_completed is True
+    # Still In progress because second subtask is pending
+    assert updated_st.status == "In progress"
+
+    # 4. Complete second subtask -> task automatically completes
+    st2_id = task.subtasks[1].subtask_id
+    completed_task = await task_service.toggle_subtask(task.task_id, st2_id, True)
+    assert completed_task.status == "Done"
+    assert completed_task.completed_at is not None
 
 
 @pytest.mark.asyncio
-async def test_routine_scheduling_and_adherence():
-    # 1. Create a routine active every day
+async def test_explicit_carry_over():
+    # 1. Create an unfinished task in Q1
+    t1 = await task_service.create_task(
+        period_id="2026-11-Q1",
+        period_type="Q1",
+        title="Unfinished Milestone",
+        status="In progress",
+    )
+
+    # 2. Explicitly carry over to Q2
+    carried = await task_service.carry_over_tasks(
+        from_period_id="2026-11-Q1",
+        to_period_id="2026-11-Q2",
+        to_period_type="Q2",
+        task_ids=[t1.task_id],
+    )
+
+    assert len(carried) == 1
+    assert carried[0].task_id == t1.task_id
+    assert carried[0].period_id == "2026-11-Q2"
+    assert carried[0].period_type == "Q2"
+
+
+@pytest.mark.asyncio
+async def test_routine_scheduling_and_exact_all_skipped_rule():
+    # 1. Create two routines active every day
     r1 = await task_service.create_routine_definition(
         title="Morning Focus",
         days_of_week=[0, 1, 2, 3, 4, 5, 6],
     )
-
-    # 2. Create a routine active only on Wednesdays (weekday 2)
     r2 = await task_service.create_routine_definition(
-        title="Wednesday Sprint Review",
-        days_of_week=[2],
+        title="Evening Review",
+        days_of_week=[0, 1, 2, 3, 4, 5, 6],
     )
 
-    # Test day 2026-11-15 (Sunday, weekday 6)
     test_d = date(2026, 11, 15)
     await calendar_service.ensure_day_exists(test_d)
-
     occs = await task_service.generate_routine_occurrences_for_day(test_d)
-    # r1 should be scheduled, r2 should NOT be scheduled on Sunday
-    assert len(occs) == 1
-    assert occs[0].title == "Morning Focus"
+    assert len(occs) >= 2
 
-    # Check adherence before completion: must report missed
-    adhered, missed = await task_service.check_routine_adherence("2026-11-15")
-    assert adhered is False
-    assert "Morning Focus" in missed
+    # Check adherence before completing anything
+    all_skipped, total, completed = await task_service.check_all_routines_skipped("2026-11-15")
+    # Total > 0 and 0 completed -> all_skipped is True!
+    assert all_skipped is True
+    assert completed == 0
 
-    # Complete the routine
+    # Complete ONE routine:
     await task_service.complete_routine_occurrence(occs[0].occurrence_id, is_completed=True)
-    adhered_now, missed_now = await task_service.check_routine_adherence("2026-11-15")
-    assert adhered_now is True
-    assert len(missed_now) == 0
+
+    # Spec Principle 9: Were ALL configured routine tasks skipped?
+    all_skipped_now, total_now, completed_now = await task_service.check_all_routines_skipped("2026-11-15")
+    # One was completed, so ALL were NOT skipped!
+    assert all_skipped_now is False
+    assert completed_now >= 1

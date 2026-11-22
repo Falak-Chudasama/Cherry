@@ -92,6 +92,16 @@ def get_surplus_id(year: int, month: int) -> str:
     return f"{year:04d}-{month:02d}-SURPLUS"
 
 
+def get_season_for_day(d: date) -> str:
+    """Given a calendar date, return its stable Season ID (e.g. '2026-11')."""
+    return get_season_id(d.year, d.month)
+
+
+def get_verse_for_day(d: date) -> str:
+    """Given a calendar date, return its stable Verse ID (e.g. '2026')."""
+    return get_verse_id(d.year)
+
+
 def get_period_for_day(d: date) -> Tuple[PeriodType, str]:
     """
     Given a calendar date, return its PeriodType ('Q1','Q2','Q3','Q4','SURPLUS')
@@ -115,6 +125,23 @@ def get_period_for_day(d: date) -> Tuple[PeriodType, str]:
         if day_num > total_days:
             raise ValueError(f"Invalid date {d}: month {month} has only {total_days} days.")
         return "SURPLUS", get_surplus_id(year, month)
+
+
+def get_day_number_in_period(d: date) -> int:
+    """
+    Given a calendar date, return its 1-based day index within its period (1..7 for Q1-Q4, 1..3 for SURPLUS).
+    """
+    day_num = d.day
+    if 1 <= day_num <= 7:
+        return day_num
+    elif 8 <= day_num <= 14:
+        return day_num - 7
+    elif 15 <= day_num <= 21:
+        return day_num - 14
+    elif 22 <= day_num <= 28:
+        return day_num - 21
+    else:
+        return day_num - 28
 
 
 def get_quarter_date_range(year: int, month: int, quarter_num: int) -> Tuple[date, date]:

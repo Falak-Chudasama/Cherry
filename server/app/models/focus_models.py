@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 
 
-FocusSessionStatus = Literal["active", "paused", "completed", "interrupted", "abandoned"]
+FocusSessionStatus = Literal["active", "break", "paused", "completed", "interrupted", "abandoned"]
+FocusPhase = Literal["idle", "focus", "break"]
 
 
 class PomodoroSessionModel(BaseModel):
@@ -31,3 +32,8 @@ class FocusStateModel(BaseModel):
     lemon_synchronized: bool = False
     last_reconciled_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    phase: FocusPhase = "idle"
+    started_at: Optional[datetime] = None
+    planned_minutes: int = 60
+    break_started_at: Optional[datetime] = None
+    break_minutes: int = 10

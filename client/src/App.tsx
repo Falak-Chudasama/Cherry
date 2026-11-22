@@ -4,9 +4,11 @@ import { ToastProvider } from './components/ui/ToastProvider';
 import { ThemeProvider } from './components/ui/ThemeProvider';
 import { EcosystemProvider } from './context/EcosystemContext';
 import { Header } from './components/layout/Header';
-import { Sidebar } from './components/layout/Sidebar';
 import { DirectionalPageTransition } from './components/layout/DirectionalPageTransition';
 import { KeyboardShortcutsModal } from './components/ui/KeyboardShortcutsModal';
+import { TaskDrawer } from './components/features/TaskDrawer';
+import { PlanWorkbenchModal } from './components/features/PlanWorkbenchModal';
+import { AiDrawer } from './components/features/AiDrawer';
 import { useKeyboardNav } from './hooks/useKeyboardNav';
 
 import { DayPage } from './pages/DayPage';
@@ -24,11 +26,11 @@ function LoadingFallback() {
 
 function MainAppLayout() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // Bind global keyboard navigation (Ctrl+Arrows, 1-4, /, t, m, ?, Esc)
+  // Bind global keyboard navigation (1-2 primary, 3-4 utility, Ctrl+K, n, t, m, ?, Esc)
   useKeyboardNav({
     onToggleShortcutsModal: () => setShortcutsOpen((prev) => !prev),
+    isShortcutsOpen: shortcutsOpen,
   });
 
   return (
@@ -38,28 +40,17 @@ function MainAppLayout() {
       <div className="pointer-events-none fixed top-1/3 -right-32 h-[500px] w-[500px] rounded-full bg-gradient-to-bl from-cherry-leaf/[0.05] to-transparent blur-[120px] dark:from-cherry-leaf/[0.06]" />
       <div className="pointer-events-none fixed -bottom-32 left-1/4 h-[500px] w-[500px] rounded-full bg-gradient-to-tr from-cherry-700/[0.04] to-transparent blur-[130px] dark:from-cherry-900/[0.05]" />
 
-      <div className="relative z-10 pt-20 sm:pt-24">
-        <Header
-          onOpenShortcuts={() => setShortcutsOpen(true)}
-          onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
-        />
-        {/* Mobile Slide-Over Drawer */}
-        <Sidebar
-          isCollapsed={false}
-          onToggleCollapse={() => {}}
-          mobileOpen={mobileSidebarOpen}
-          onCloseMobile={() => setMobileSidebarOpen(false)}
-          mobileOnly={true}
-        />
-        <div className="min-h-[calc(100vh-6rem)]">
+      <div className="relative z-10 pt-16 sm:pt-20">
+        <Header />
+        <div className="min-h-[calc(100vh-4rem)] sm:min-h-[calc(100vh-5rem)]">
           <Suspense fallback={<LoadingFallback />}>
             <DirectionalPageTransition>
               <Routes>
                 <Route path="/" element={<DayPage />} />
                 <Route path="/day" element={<Navigate to="/" replace />} />
-                <Route path="/chat" element={<ChatPage />} />
                 <Route path="/quarter" element={<QuarterPage />} />
                 <Route path="/notes" element={<NotesPage />} />
+                <Route path="/chat" element={<ChatPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </DirectionalPageTransition>
@@ -67,10 +58,14 @@ function MainAppLayout() {
         </div>
       </div>
 
+      {/* Global Modals & Drawers */}
       <KeyboardShortcutsModal
         isOpen={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+      <TaskDrawer />
+      <PlanWorkbenchModal />
+      <AiDrawer />
     </div>
   );
 }
