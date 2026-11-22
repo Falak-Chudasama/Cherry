@@ -14,6 +14,9 @@ import {
   Flame,
   Clock,
   Repeat,
+  CircleDot,
+  Play,
+  CheckCircle2,
 } from 'lucide-react';
 import { useEcosystem } from '../../context/EcosystemContext';
 import { api } from '../../lib/api';
@@ -30,6 +33,18 @@ interface SubtaskItem {
   selected_days?: number[];
   is_completed?: boolean;
 }
+
+interface StatusOption {
+  id: KanbanStatus;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const STATUS_OPTIONS: StatusOption[] = [
+  { id: 'Not started', label: 'Not started', icon: CircleDot },
+  { id: 'In progress', label: 'In progress', icon: Play },
+  { id: 'Done', label: 'Done', icon: CheckCircle2 },
+];
 
 export const TaskDrawer: React.FC = () => {
   const {
@@ -93,11 +108,32 @@ export const TaskDrawer: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [activeDayPickerIdx, setActiveDayPickerIdx] = useState<number | null>(null);
   const [subtaskAnchorDay, setSubtaskAnchorDay] = useState<number | null>(null);
-  const [isClosing, setIsClosing] = useState(false);
+  const [shouldRender, setShouldRender] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
 
   const isSurplus = periodId.includes('SURPLUS') || periodType === 'SURPLUS';
   const totalDays = isSurplus ? 3 : 7;
   const dayPills = Array.from({ length: totalDays }, (_, i) => i + 1);
+
+  // Mount/Unmount & smooth slide transition orchestration
+  useEffect(() => {
+    if (isTaskDrawerOpen) {
+      setShouldRender(true);
+      const r1 = requestAnimationFrame(() => {
+        const r2 = requestAnimationFrame(() => {
+          setIsVisible(true);
+        });
+        return () => cancelAnimationFrame(r2);
+      });
+      return () => cancelAnimationFrame(r1);
+    } else {
+      setIsVisible(false);
+      const timer = setTimeout(() => {
+        setShouldRender(false);
+      }, 320);
+      return () => clearTimeout(timer);
+    }
+  }, [isTaskDrawerOpen]);
 
   // Update Status sliding pill geometry
   const updateStatusPill = () => {
@@ -116,23 +152,28 @@ export const TaskDrawer: React.FC = () => {
   };
 
   useEffect(() => {
-    updateStatusPill();
-    const timer = setTimeout(() => {
-      setIsStatusReady(true);
+    if (isVisible) {
       updateStatusPill();
-    }, 50);
-    window.addEventListener('resize', updateStatusPill);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', updateStatusPill);
-    };
-  }, [status, isTaskDrawerOpen]);
+      const t1 = setTimeout(() => {
+        setIsStatusReady(true);
+        updateStatusPill();
+      }, 60);
+      const t2 = setTimeout(() => {
+        updateStatusPill();
+      }, 180);
+      window.addEventListener('resize', updateStatusPill);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        window.removeEventListener('resize', updateStatusPill);
+      };
+    }
+  }, [status, isVisible]);
 
   // Initialize data on open
   useEffect(() => {
     if (!isTaskDrawerOpen) return;
 
-    setIsClosing(false);
     setShowDeleteConfirm(false);
     setShowAiRefine(false);
     setPreviousDraft(null);
@@ -222,26 +263,25 @@ export const TaskDrawer: React.FC = () => {
     }
   }, [isTaskDrawerOpen, taskDrawerData, mode, existingTask, activeQuarterId, activePeriodType, todayStr]);
 
-  // Graceful animated close
+  // Graceful animated close (slides smoothly left-to-right off-screen)
   const handleAnimatedClose = () => {
-    if (isClosing) return;
-    setIsClosing(true);
+    if (!isVisible) return;
     playBack();
+    setIsVisible(false);
     setTimeout(() => {
       closeTaskDrawer();
-      setIsClosing(false);
     }, 280);
   };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isTaskDrawerOpen && !isClosing) {
+      if (e.key === 'Escape' && isVisible) {
         handleAnimatedClose();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isTaskDrawerOpen, isClosing]);
+  }, [isVisible]);
 
   // Task-level Day Tagging (Click: single, Shift+click: range, Ctrl+click: multi)
   const handleTaskDayClick = (dayNum: number, e: React.MouseEvent) => {
@@ -501,24 +541,24 @@ export const TaskDrawer: React.FC = () => {
     }
   };
 
-  if (!isTaskDrawerOpen && !isClosing) return null;
+  if (!shouldRender) return null;
 
   return (
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-40 bg-black/30 backdrop-blur-xs transition-opacity duration-300 ${
-          isClosing ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        className={`fixed inset-0 z-40 bg-black/30 backdrop-blur-xs transition-opacity duration-300 ease-out ${
+          isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={handleAnimatedClose}
       />
 
       {/* Floating Rounded Modal Sheet with Apple-grade Smooth Slide Transitions */}
       <aside
-        className={`fixed top-3 bottom-3 right-3 sm:top-4 sm:bottom-4 sm:right-4 z-50 w-[calc(100%-1.5rem)] sm:w-[460px] rounded-3xl bg-stone-50/95 dark:bg-[#151613]/95 backdrop-blur-xl border border-black/10 dark:border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden ${
-          isClosing
-            ? 'transition-all duration-280 ease-[cubic-bezier(0.16,1,0.3,1)] translate-x-[calc(100%+2rem)] opacity-0 scale-95'
-            : 'animate-drawer-in'
+        className={`fixed top-3 bottom-3 right-3 sm:top-4 sm:bottom-4 sm:right-4 z-50 w-[calc(100%-1.5rem)] sm:w-[460px] rounded-3xl bg-stone-50/95 dark:bg-[#151613]/95 backdrop-blur-xl border border-black/10 dark:border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform will-change-transform ${
+          isVisible
+            ? 'translate-x-0 opacity-100 scale-100 pointer-events-auto'
+            : 'translate-x-[calc(100%+3rem)] opacity-0 scale-[0.98] pointer-events-none'
         }`}
         role="dialog"
         aria-modal="true"
@@ -672,26 +712,28 @@ export const TaskDrawer: React.FC = () => {
                 aria-hidden="true"
               />
 
-              {(['Not started', 'In progress', 'Done'] as const).map((s) => {
-                const isSelected = status === s;
+              {STATUS_OPTIONS.map((opt) => {
+                const isSelected = status === opt.id;
+                const Icon = opt.icon;
                 return (
                   <button
-                    key={s}
+                    key={opt.id}
                     type="button"
                     ref={(el) => {
-                      statusItemRefs.current[s] = el;
+                      statusItemRefs.current[opt.id] = el;
                     }}
                     onClick={() => {
                       playScroll();
-                      setStatus(s);
+                      setStatus(opt.id);
                     }}
-                    className={`relative z-10 flex-1 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors duration-200 text-center ${
+                    className={`relative z-10 flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors duration-200 text-center flex items-center justify-center gap-1.5 select-none ${
                       isSelected
                         ? 'text-white dark:text-stone-900'
                         : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100'
                     }`}
                   >
-                    {s}
+                    <Icon className={`w-3.5 h-3.5 shrink-0 ${opt.id === 'In progress' ? 'w-3 h-3 fill-current' : ''}`} />
+                    <span>{opt.label}</span>
                   </button>
                 );
               })}
