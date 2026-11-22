@@ -22,6 +22,8 @@ export const DayPage: React.FC = () => {
   const {
     todayStr,
     openTaskDrawer,
+    isTaskDrawerOpen,
+    isAiDrawerOpen,
     workspaceRevision,
     bumpWorkspaceRevision,
   } = useEcosystem();
@@ -68,6 +70,37 @@ export const DayPage: React.FC = () => {
       window.removeEventListener('resize', updateTierPill);
     };
   }, [tierFilter]);
+
+  // Keyboard navigation for sub-menu (Shift + ArrowLeft / Shift + ArrowRight)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTaskDrawerOpen || isAiDrawerOpen) return;
+      const target = e.target as HTMLElement | null;
+      const isEditingText =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isEditingText) return;
+
+      if (e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        const TIER_OPTIONS = ['ALL', 'Must Do', 'Should Do', 'Routine'] as const;
+        const currentIdx = TIER_OPTIONS.indexOf(tierFilter);
+        let nextIdx = currentIdx;
+        if (e.key === 'ArrowRight') {
+          nextIdx = (currentIdx + 1) % TIER_OPTIONS.length;
+        } else {
+          nextIdx = (currentIdx - 1 + TIER_OPTIONS.length) % TIER_OPTIONS.length;
+        }
+        playScroll();
+        setTierFilter(TIER_OPTIONS[nextIdx]);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [tierFilter, isTaskDrawerOpen, isAiDrawerOpen]);
 
   // Compute day number in quarter
   const dayMeta = useMemo(() => {

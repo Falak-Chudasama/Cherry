@@ -277,11 +277,36 @@ export const TaskDrawer: React.FC = () => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isVisible) {
         handleAnimatedClose();
+        return;
+      }
+
+      if (!isVisible) return;
+
+      const target = e.target as HTMLElement | null;
+      const isEditingText =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isEditingText) return;
+
+      if (e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        const statusOrder: KanbanStatus[] = ['Not started', 'In progress', 'Done'];
+        const currentIdx = statusOrder.indexOf(status);
+        let nextIdx = currentIdx;
+        if (e.key === 'ArrowRight') {
+          nextIdx = (currentIdx + 1) % statusOrder.length;
+        } else {
+          nextIdx = (currentIdx - 1 + statusOrder.length) % statusOrder.length;
+        }
+        playScroll();
+        setStatus(statusOrder[nextIdx]);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isVisible]);
+  }, [isVisible, status]);
 
   // Task-level Day Tagging (Click: single, Shift+click: range, Ctrl+click: multi)
   const handleTaskDayClick = (dayNum: number, e: React.MouseEvent) => {

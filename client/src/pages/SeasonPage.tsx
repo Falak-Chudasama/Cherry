@@ -89,6 +89,26 @@ export const SeasonPage: React.FC = () => {
     });
   };
 
+  // Keyboard navigation for sub-menu [Season (Month) | Verse (Year)]
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isEditingText =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isEditingText) return;
+
+      if (e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        handleToggleView(viewMode === 'season' ? 'verse' : 'season');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewMode, selectedYear, selectedMonth]);
+
   const handlePrev = () => {
     playScroll();
     if (viewMode === 'season') {

@@ -14,6 +14,7 @@ const SHORTCUT_GROUPS = [
       { key: '3 - 4', desc: 'Utility views (Notes, Chat)' },
       { key: 'Ctrl + →', desc: 'Next view' },
       { key: 'Ctrl + ←', desc: 'Previous view' },
+      { key: 'Shift + ← / →', desc: 'Navigate sub-menu filters (Tier, Day, Status)' },
     ],
   },
   {

@@ -29,6 +29,8 @@ export const QuarterPage: React.FC = () => {
     activeQuarterId,
     openTaskDrawer,
     openPlanModal,
+    isTaskDrawerOpen,
+    isAiDrawerOpen,
     workspaceRevision,
     bumpWorkspaceRevision,
   } = useEcosystem();
@@ -50,52 +52,6 @@ export const QuarterPage: React.FC = () => {
 
   const quarterNum = isSurplus ? null : parseInt(currentPeriodType.replace('Q', ''), 10);
   const totalDays = isSurplus ? 3 : 7;
-
-  const { push: toast } = useToast();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedDayFilter, setSelectedDayFilter] = useState<number | 'ALL'>('ALL');
-  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
-
-  const dayFilterContainerRef = useRef<HTMLDivElement>(null);
-  const dayFilterItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [dayPillStyle, setDayPillStyle] = useState<{
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-    opacity: number;
-  }>({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
-  const [isDayPillReady, setIsDayPillReady] = useState(false);
-
-  const updateDayPill = () => {
-    const key = String(selectedDayFilter);
-    const el = dayFilterItemRefs.current[key];
-    if (el && dayFilterContainerRef.current) {
-      setDayPillStyle({
-        left: el.offsetLeft,
-        top: el.offsetTop,
-        width: el.offsetWidth,
-        height: el.offsetHeight,
-        opacity: 1,
-      });
-    } else {
-      setDayPillStyle((prev) => ({ ...prev, opacity: 0 }));
-    }
-  };
-
-  useEffect(() => {
-    updateDayPill();
-    const timer = setTimeout(() => {
-      setIsDayPillReady(true);
-      updateDayPill();
-    }, 50);
-    window.addEventListener('resize', updateDayPill);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', updateDayPill);
-    };
-  }, [selectedDayFilter]);
 
   // Compute Period Meta & Date Ranges
   const periodMeta = useMemo(() => {
@@ -153,6 +109,83 @@ export const QuarterPage: React.FC = () => {
 
     return { label, dateRange, days };
   }, [currentPeriodId, isSurplus, quarterNum, totalDays]);
+
+  const { push: toast } = useToast();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDayFilter, setSelectedDayFilter] = useState<number | 'ALL'>('ALL');
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+
+  const dayFilterContainerRef = useRef<HTMLDivElement>(null);
+  const dayFilterItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [dayPillStyle, setDayPillStyle] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    opacity: number;
+  }>({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
+  const [isDayPillReady, setIsDayPillReady] = useState(false);
+
+  const updateDayPill = () => {
+    const key = String(selectedDayFilter);
+    const el = dayFilterItemRefs.current[key];
+    if (el && dayFilterContainerRef.current) {
+      setDayPillStyle({
+        left: el.offsetLeft,
+        top: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+        opacity: 1,
+      });
+    } else {
+      setDayPillStyle((prev) => ({ ...prev, opacity: 0 }));
+    }
+  };
+
+  useEffect(() => {
+    updateDayPill();
+    const timer = setTimeout(() => {
+      setIsDayPillReady(true);
+      updateDayPill();
+    }, 50);
+    window.addEventListener('resize', updateDayPill);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateDayPill);
+    };
+  }, [selectedDayFilter]);
+
+  // Keyboard navigation for sub-menu day filter (Shift + ArrowLeft / Shift + ArrowRight)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTaskDrawerOpen || isAiDrawerOpen) return;
+      const target = e.target as HTMLElement | null;
+      const isEditingText =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isEditingText) return;
+
+      if (e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        const dayOptions: (number | 'ALL')[] = ['ALL', ...periodMeta.days.map((d) => d.dayNum)];
+        const currentIdx = dayOptions.indexOf(selectedDayFilter);
+        let nextIdx = currentIdx;
+        if (e.key === 'ArrowRight') {
+          nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % dayOptions.length;
+        } else {
+          nextIdx = currentIdx === -1 ? dayOptions.length - 1 : (currentIdx - 1 + dayOptions.length) % dayOptions.length;
+        }
+        playScroll();
+        setSelectedDayFilter(dayOptions[nextIdx]);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDayFilter, periodMeta.days, isTaskDrawerOpen, isAiDrawerOpen]);
 
   const loadPeriodTasks = async () => {
     try {

@@ -203,6 +203,28 @@ export const NotesPage: React.FC = () => {
     }
   };
 
+  // Keyboard navigation for sub-menu [Notes | Commands]
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isNoteDrawerOpen) return;
+      const target = e.target as HTMLElement | null;
+      const isEditingText =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isEditingText) return;
+
+      if (e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        playScroll();
+        setActiveTab((prev) => (prev === 'notes' ? 'commands' : 'notes'));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isNoteDrawerOpen]);
+
   // Derive unique tags
   const allTags = Array.from(new Set(notes.flatMap((n) => n.tags || [])));
 
