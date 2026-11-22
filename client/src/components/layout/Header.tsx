@@ -4,7 +4,6 @@ import {
   Moon,
   Sun,
   Sparkles,
-  Plus,
   BookOpen,
 } from 'lucide-react';
 import { useTheme } from '../ui/ThemeProvider';
@@ -19,7 +18,6 @@ export function Header() {
   const {
     activePeriodType,
     openAiDrawer,
-    openTaskDrawer,
   } = useEcosystem();
 
   const navContainerRef = useRef<HTMLDivElement>(null);
@@ -168,20 +166,6 @@ export function Header() {
               <BookOpen className="h-4 w-4" />
             </NavLink>
 
-            {/* + New Task Button */}
-            <button
-              type="button"
-              onClick={() => {
-                playEnter();
-                openTaskDrawer({ mode: 'create' });
-              }}
-              className="focus-ring flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs font-semibold shadow-xs transition hover:scale-[1.02]"
-              title="Create Task (n)"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Task</span>
-            </button>
-
             {/* Ask AI Button */}
             <button
               type="button"
@@ -261,17 +245,6 @@ export function Header() {
 
         {/* Mobile Utility Icons */}
         <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              playEnter();
-              openTaskDrawer({ mode: 'create' });
-            }}
-            className="p-1.5 rounded-full bg-cherry-flesh text-white"
-            aria-label="Create Task"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
           <button
             type="button"
             onClick={() => {
