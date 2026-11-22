@@ -446,13 +446,16 @@ export const TaskDrawer: React.FC = () => {
           is_completed: st.is_completed ?? false,
         }));
 
+      const category = tier === 'Must Do' ? 'MUST' : tier === 'Should Do' ? 'SHOULD' : 'ROUTINE';
       const payload = {
         title: title.trim(),
         description: description.trim(),
         tier,
+        category,
         priority,
         status,
         period_id: periodId,
+        quarter_id: periodId,
         period_type: periodType,
         target_date: todayStr,
         start_day: Math.min(...taskDays),

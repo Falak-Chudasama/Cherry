@@ -56,11 +56,15 @@ export const TaskListCard: React.FC<TaskListCardProps> = ({ cardData, onTasksAdd
     try {
       const tasksToAdd = selectedIndices.map((idx) => {
         const t = initialTasks[idx];
+        const tier = t.tier || 'Must Do';
+        const category = tier === 'Must Do' ? 'MUST' : tier === 'Should Do' ? 'SHOULD' : 'ROUTINE';
         return {
           period_id,
+          quarter_id: period_id,
           period_type,
           title: t.title,
-          tier: t.tier || 'Must Do',
+          tier,
+          category,
           priority: t.priority || 'Normal',
           description: t.description || '',
           status: 'Not started',

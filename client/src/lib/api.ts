@@ -66,15 +66,20 @@ export const api = {
     }>(`/api/tasks/day/${dateStr}`),
   createTask: (payload: {
     period_id: string;
+    quarter_id?: string;
     title: string;
     period_type?: PeriodType;
     tier?: string;
+    category?: string;
     description?: string;
     priority?: string;
     status?: KanbanStatus;
     target_date?: string;
     deadline?: string;
     estimated_minutes?: number;
+    start_day?: number;
+    end_day?: number;
+    scheduled_days?: number[];
     subtasks?: any[];
   }) => request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(payload) }),
   createTasksBatch: (tasks: any[]) =>

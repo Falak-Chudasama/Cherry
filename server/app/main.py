@@ -3,6 +3,7 @@ Cherry Main Application Entrypoint.
 FastAPI application for Cherry, bound to 127.0.0.7:10000.
 """
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

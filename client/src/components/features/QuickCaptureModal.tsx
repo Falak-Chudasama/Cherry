@@ -47,7 +47,10 @@ export const QuickCaptureModal: React.FC = () => {
       await api.createTask({
         title: taskTitle.trim(),
         period_id: activeQuarterId,
+        quarter_id: activeQuarterId,
         period_type: activePeriodType,
+        tier: 'Must Do',
+        category: 'MUST',
         priority: taskPriority || undefined,
         status: 'Not started',
         target_date: todayStr,

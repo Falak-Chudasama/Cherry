@@ -4,7 +4,7 @@ Enforces the 3-status Kanban model ("Not started", "In progress", "Done")
 and explicit carry-over.
 """
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict, Any
 from app.core import calendar as cal
 from app.services.task_service import task_service
@@ -14,10 +14,12 @@ router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
 
 class CreateTaskPayload(BaseModel):
-    period_id: str
+    period_id: Optional[str] = None
+    quarter_id: Optional[str] = None
     title: str
     period_type: PeriodType = "Q1"
-    tier: Optional[str] = "Must Do"
+    tier: Optional[str] = None
+    category: Optional[str] = None
     description: Optional[str] = ""
     priority: Optional[str] = None
     status: KanbanStatus = "Not started"
@@ -28,6 +30,39 @@ class CreateTaskPayload(BaseModel):
     end_day: Optional[int] = None
     scheduled_days: Optional[List[int]] = None
     subtasks: Optional[List[Any]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reconcile_legacy_fields(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            pid = values.get("period_id") or values.get("quarter_id")
+            if pid:
+                values["period_id"] = pid
+                values["quarter_id"] = pid
+            else:
+                values["period_id"] = "2026-11-Q4"
+                values["quarter_id"] = "2026-11-Q4"
+
+            tier = values.get("tier")
+            category = values.get("category")
+            if not tier and category:
+                if "must" in str(category).lower():
+                    values["tier"] = "Must Do"
+                elif "should" in str(category).lower():
+                    values["tier"] = "Should Do"
+                else:
+                    values["tier"] = "Routine"
+            elif not category and tier:
+                if "must" in str(tier).lower():
+                    values["category"] = "MUST"
+                elif "should" in str(tier).lower():
+                    values["category"] = "SHOULD"
+                else:
+                    values["category"] = "ROUTINE"
+            elif not tier and not category:
+                values["tier"] = "Must Do"
+                values["category"] = "MUST"
+        return values
 
 
 class BatchCreateTasksPayload(BaseModel):
