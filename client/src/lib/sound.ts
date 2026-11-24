@@ -141,39 +141,43 @@ function synthNav(ctx: AudioContext, vol: number) {
 }
 
 /**
- * 3. Enter / Create: Radiant Major Triad Chime (C5 523Hz + E5 659Hz + G5 784Hz)
+ * 3. Enter / Primary Action: Solid, mature, velvety tactile impact
+ * Completely eliminates goofy arpeggiated tutorial chimes.
+ * Clean, dry, physical mechanical contact with high acoustic mass (340Hz body + 720Hz micro-transient).
  */
 function synthEnter(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(2200, t);
+  filter.frequency.setValueAtTime(1400, t);
 
-  const notes = [
-    { freq: 523.25, delay: 0.000, gainMul: 0.32, dur: 0.16 },
-    { freq: 659.25, delay: 0.012, gainMul: 0.28, dur: 0.18 },
-    { freq: 783.99, delay: 0.024, gainMul: 0.24, dur: 0.20 },
-  ];
+  // Crisp physical contact transient (first 5ms)
+  const clickOsc = ctx.createOscillator();
+  const clickGain = ctx.createGain();
+  clickOsc.type = 'sine';
+  clickOsc.frequency.setValueAtTime(720, t);
+  clickGain.gain.setValueAtTime(vol * 0.40, t);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.012);
 
-  notes.forEach(({ freq, delay, gainMul, dur }) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const startT = t + delay;
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, startT);
+  // Warm, solid, executive acoustic body at 340Hz (constant frequency, zero arpeggio)
+  const bodyOsc = ctx.createOscillator();
+  const bodyGain = ctx.createGain();
+  bodyOsc.type = 'sine';
+  bodyOsc.frequency.setValueAtTime(340, t);
+  bodyGain.gain.setValueAtTime(vol * 0.50, t);
+  bodyGain.gain.exponentialRampToValueAtTime(0.001, t + 0.038);
 
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.setValueAtTime(0, startT);
-    gain.gain.linearRampToValueAtTime(vol * gainMul, startT + 0.005);
-    gain.gain.exponentialRampToValueAtTime(0.001, startT + dur);
+  clickOsc.connect(filter);
+  bodyOsc.connect(filter);
+  filter.connect(clickGain);
+  filter.connect(bodyGain);
+  clickGain.connect(ctx.destination);
+  bodyGain.connect(ctx.destination);
 
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(startT);
-    osc.stop(startT + dur + 0.01);
-  });
+  clickOsc.start(t);
+  clickOsc.stop(t + 0.015);
+  bodyOsc.start(t);
+  bodyOsc.stop(t + 0.042);
 }
 
 /**
