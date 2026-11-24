@@ -479,7 +479,11 @@ export const QuarterPage: React.FC = () => {
         >
           {/* Dynamic Sliding Active Indicator Pill */}
           <div
-            className={`absolute top-0 left-0 rounded-full bg-stone-900 dark:bg-stone-100 shadow-xs pointer-events-none ${
+            className={`absolute top-0 left-0 rounded-full shadow-xs pointer-events-none transition-colors duration-300 ${
+              selectedDayFilter === todayDayNum
+                ? 'bg-cherry-flesh shadow-cherry-500/25'
+                : 'bg-stone-900 dark:bg-stone-100'
+            } ${
               isDayPillReady ? 'transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]' : ''
             }`}
             style={{
@@ -526,14 +530,16 @@ export const QuarterPage: React.FC = () => {
                 }}
                 className={`relative z-10 px-3 py-1.5 rounded-full text-xs font-semibold font-mono transition-colors duration-200 select-none ${
                   isSelected
-                    ? 'text-white dark:text-stone-900'
+                    ? isToday
+                      ? 'text-white'
+                      : 'text-white dark:text-stone-900'
                     : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
                 }`}
               >
                 {d.dateLabel}
-                {isToday && (
+                {isToday && !isSelected && (
                   <span
-                    className="absolute top-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-[#FF5252] pointer-events-none"
+                    className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-[#FF5252] ring-1 ring-white dark:ring-[#141212] pointer-events-none"
                     title="Today"
                     aria-label="Today"
                   />
