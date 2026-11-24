@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../ui/ThemeProvider';
 import { useEcosystem } from '../../context/EcosystemContext';
-import { playScroll, playEnter } from '../../lib/sound';
+import { playEnter, playPageNav } from '../../lib/sound';
 import { NAV_ROUTES } from '../../lib/routes';
 
 export function Header() {
@@ -75,7 +75,7 @@ export function Header() {
           {/* Brand Wordmark & Logo */}
           <Link
             to="/"
-            onClick={() => playScroll()}
+            onClick={() => playPageNav()}
             className="focus-ring flex items-center gap-2.5 rounded-full pr-1 transition hover:opacity-90 shrink-0"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full glass-card p-1 shadow-2xs">
@@ -123,7 +123,7 @@ export function Header() {
                     key={to}
                     to={to}
                     onClick={(e) => {
-                      playScroll();
+                      playPageNav();
                       if (to === '/quarter' && location.search) {
                         e.preventDefault();
                         navigate('/quarter');
@@ -153,7 +153,7 @@ export function Header() {
             {/* Basket Notes & Commands Utility Link */}
             <NavLink
               to="/notes"
-              onClick={() => playScroll()}
+              onClick={() => playPageNav()}
               title="Basket Notes & Commands"
               className={({ isActive }) =>
                 `focus-ring flex h-8 w-8 items-center justify-center rounded-full transition ${
@@ -204,7 +204,7 @@ export function Header() {
       <header className="sticky top-0 z-40 flex w-full items-center justify-between border-b border-black/5 bg-white/80 px-4 py-3 backdrop-blur-md dark:border-white/10 dark:bg-[#121310]/80 sm:hidden">
         <Link
           to="/"
-          onClick={() => playScroll()}
+          onClick={() => playPageNav()}
           className="flex items-center gap-2"
         >
           <img
@@ -229,6 +229,7 @@ export function Header() {
               <NavLink
                 key={to}
                 to={to}
+                onClick={() => playPageNav()}
                 className={({ isActive }) =>
                   `px-3 py-1 rounded-full text-xs font-semibold transition ${
                     isActive

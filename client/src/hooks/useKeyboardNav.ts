@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { playScroll, toggleSound } from '../lib/sound';
+import { playPageNav, toggleSound } from '../lib/sound';
 import { useTheme } from '../components/ui/ThemeProvider';
 import { useEcosystem } from '../context/EcosystemContext';
 import { PRIMARY_NAV_PAGES, normalizeNavPath } from '../lib/routes';
@@ -133,7 +133,7 @@ export function useKeyboardNav(options?: UseKeyboardNavOptions) {
         const targetPage = keyMap[e.key];
         if (targetPage && targetPage !== location.pathname) {
           e.preventDefault();
-          playScroll();
+          playPageNav();
           navigate(targetPage);
         }
         return;
@@ -142,7 +142,7 @@ export function useKeyboardNav(options?: UseKeyboardNavOptions) {
       // Handle key 5 for full chat workbench
       if (e.key === '5' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditingText) {
         e.preventDefault();
-        playScroll();
+        playPageNav();
         navigate('/chat');
         return;
       }
@@ -167,7 +167,7 @@ export function useKeyboardNav(options?: UseKeyboardNavOptions) {
 
         const targetPath = PRIMARY_NAV_PAGES[nextIndex];
         if (targetPath && targetPath !== location.pathname) {
-          playScroll();
+          playPageNav();
           navigate(targetPath);
         }
       }

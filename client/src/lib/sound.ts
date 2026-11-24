@@ -6,10 +6,11 @@
  * Neither harsh/high-pitched nor muddy/low-pitched.
  */
 
-export type SoundCategory = 'scroll' | 'enter' | 'back' | 'failed' | 'notification';
+export type SoundCategory = 'scroll' | 'nav' | 'enter' | 'back' | 'failed' | 'notification';
 
 const SFX_FILES: Record<SoundCategory, string> = {
   scroll: '/sfx/scroll.mp3',
+  nav: '/sfx/nav.mp3',
   enter: '/sfx/enter.mp3',
   back: '/sfx/back.mp3',
   failed: '/sfx/failed.mp3',
@@ -17,18 +18,19 @@ const SFX_FILES: Record<SoundCategory, string> = {
 };
 
 const VOLUMES: Record<SoundCategory, number> = {
-  scroll: 0.20,
-  enter: 0.30,
-  back: 0.24,
-  failed: 0.32,
-  notification: 0.30,
+  scroll: 0.18,
+  nav: 0.22,
+  enter: 0.28,
+  back: 0.22,
+  failed: 0.30,
+  notification: 0.28,
 };
 
 const STORAGE_KEY_MUTED = 'cherry_sound_muted';
 
 const audioCache: Partial<Record<SoundCategory, HTMLAudioElement>> = {};
 let lastScrollTime = 0;
-const SCROLL_THROTTLE_MS = 110;
+const SCROLL_THROTTLE_MS = 100;
 
 let audioCtx: AudioContext | null = null;
 
@@ -50,31 +52,31 @@ function getAudioContext(): AudioContext | null {
 }
 
 /**
- * 1. Scroll / Selection: Signature Cherry Pop (Crisp Ceramic Click + 540Hz->380Hz Resonant Body)
- * Distinctive, snappy, non-typical tactile feedback.
+ * 1. Selection: Pristine, dry, tactile haptic micro-tick
+ * Completely removes the goofy/cartoonish pitch-bend "boop".
+ * High-end, subtle, dry, mechanical/glass detent.
  */
 function synthScroll(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(1400, t);
+  filter.frequency.setValueAtTime(1600, t);
 
-  // Transient micro-click (1250Hz for 6ms)
+  // Crisp micro-transient at 880Hz (A5)
   const clickOsc = ctx.createOscillator();
   const clickGain = ctx.createGain();
   clickOsc.type = 'sine';
-  clickOsc.frequency.setValueAtTime(1250, t);
-  clickGain.gain.setValueAtTime(vol * 0.35, t);
-  clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.008);
+  clickOsc.frequency.setValueAtTime(880, t);
+  clickGain.gain.setValueAtTime(vol * 0.45, t);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.014);
 
-  // Resonant rounded body (540Hz -> 380Hz)
+  // Muted damp body at 460Hz (constant frequency, zero goofy pitch-slide)
   const bodyOsc = ctx.createOscillator();
   const bodyGain = ctx.createGain();
   bodyOsc.type = 'sine';
-  bodyOsc.frequency.setValueAtTime(540, t);
-  bodyOsc.frequency.exponentialRampToValueAtTime(380, t + 0.035);
-  bodyGain.gain.setValueAtTime(vol * 0.65, t);
-  bodyGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+  bodyOsc.frequency.setValueAtTime(460, t);
+  bodyGain.gain.setValueAtTime(vol * 0.35, t);
+  bodyGain.gain.exponentialRampToValueAtTime(0.001, t + 0.020);
 
   clickOsc.connect(filter);
   bodyOsc.connect(filter);
@@ -84,13 +86,62 @@ function synthScroll(ctx: AudioContext, vol: number) {
   bodyGain.connect(ctx.destination);
 
   clickOsc.start(t);
-  clickOsc.stop(t + 0.01);
+  clickOsc.stop(t + 0.016);
   bodyOsc.start(t);
-  bodyOsc.stop(t + 0.045);
+  bodyOsc.stop(t + 0.024);
 }
 
 /**
- * 2. Enter / Create: Radiant Major Triad Chime (C5 523Hz + E5 659Hz + G5 784Hz)
+ * 2. Page Navigation: Atmospheric spatial silk slide (Unconventional, non-material)
+ * Smooth airy breath + subtle harmonic spatial resonance.
+ */
+function synthNav(ctx: AudioContext, vol: number) {
+  const t = ctx.currentTime;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(700, t);
+  filter.frequency.exponentialRampToValueAtTime(1100, t + 0.06);
+  filter.Q.setValueAtTime(1.2, t);
+
+  // Filtered soft air brush (white-noise envelope)
+  const sampleRate = ctx.sampleRate;
+  const bufferSize = Math.floor(sampleRate * 0.08);
+  const buffer = ctx.createBuffer(1, bufferSize, sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * (i / bufferSize));
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(vol * 0.22, t);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.075);
+
+  // Subtle warm spatial undertone (380Hz -> 460Hz)
+  const osc = ctx.createOscillator();
+  const oscGain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(380, t);
+  osc.frequency.linearRampToValueAtTime(460, t + 0.05);
+  oscGain.gain.setValueAtTime(0, t);
+  oscGain.gain.linearRampToValueAtTime(vol * 0.25, t + 0.008);
+  oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(ctx.destination);
+
+  osc.connect(oscGain);
+  oscGain.connect(ctx.destination);
+
+  noise.start(t);
+  osc.start(t);
+  osc.stop(t + 0.085);
+}
+
+/**
+ * 3. Enter / Create: Radiant Major Triad Chime (C5 523Hz + E5 659Hz + G5 784Hz)
  */
 function synthEnter(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
@@ -126,7 +177,7 @@ function synthEnter(ctx: AudioContext, vol: number) {
 }
 
 /**
- * 3. Back / Cancel: Crisp Gentle Pop (420Hz -> 280Hz)
+ * 4. Back / Cancel: Crisp Gentle Pop (420Hz -> 280Hz)
  */
 function synthBack(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
@@ -153,7 +204,7 @@ function synthBack(ctx: AudioContext, vol: number) {
 }
 
 /**
- * 4. Notification / Alert: Airy Dual Chime (F5 698Hz -> A5 880Hz + C6 harmonic)
+ * 5. Notification / Alert: Airy Dual Chime (F5 698Hz -> A5 880Hz + C6 harmonic)
  */
 function synthNotification(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
@@ -161,7 +212,6 @@ function synthNotification(ctx: AudioContext, vol: number) {
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(2400, t);
 
-  // Note 1: F5 (698Hz)
   const osc1 = ctx.createOscillator();
   const gain1 = ctx.createGain();
   osc1.type = 'sine';
@@ -170,7 +220,6 @@ function synthNotification(ctx: AudioContext, vol: number) {
   gain1.gain.linearRampToValueAtTime(vol * 0.70, t + 0.005);
   gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
 
-  // Note 2: A5 (880Hz) starting 50ms later with subtle harmonic
   const osc2 = ctx.createOscillator();
   const gain2 = ctx.createGain();
   osc2.type = 'sine';
@@ -194,7 +243,7 @@ function synthNotification(ctx: AudioContext, vol: number) {
 }
 
 /**
- * 5. Failed: Crisp Wooden Double Knock (280Hz and 220Hz)
+ * 6. Failed: Crisp Wooden Double Knock (280Hz and 220Hz)
  */
 function synthFailed(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
@@ -287,6 +336,9 @@ export function playSound(category: SoundCategory): void {
         case 'scroll':
           synthScroll(ctx, vol);
           return;
+        case 'nav':
+          synthNav(ctx, vol);
+          return;
         case 'enter':
           synthEnter(ctx, vol);
           return;
@@ -330,6 +382,7 @@ export const playBack = () => playSound('back');
 export const playFailed = () => playSound('failed');
 export const playNotification = () => playSound('notification');
 export const playScroll = () => playSound('scroll');
+export const playPageNav = () => playSound('nav');
 
 export const sound = {
   play: (cat: SoundCategory) => playSound(cat),
