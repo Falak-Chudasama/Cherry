@@ -1,9 +1,9 @@
 /**
- * Cherry Studio UI Sound Effects (SFX) Subsystem
+ * Cherry UI Sound Effects (SFX) Subsystem
  *
- * Professional studio-grade acoustic micro-interactions.
- * Modeled after Linear, Teenage Engineering, and Apple UI:
- * Warm, organic, tactile, and non-fatiguing. Zero cheap/high-pitched pings.
+ * Balanced Acoustic Micro-interactions.
+ * Hits the sweet spot between crisp tactile feedback and warm organic body.
+ * Neither harsh/high-pitched nor muddy/low-pitched.
  */
 
 export type SoundCategory = 'scroll' | 'enter' | 'back' | 'failed' | 'notification';
@@ -17,18 +17,18 @@ const SFX_FILES: Record<SoundCategory, string> = {
 };
 
 const VOLUMES: Record<SoundCategory, number> = {
-  scroll: 0.18,
-  enter: 0.28,
-  back: 0.22,
-  failed: 0.35,
-  notification: 0.32,
+  scroll: 0.20,
+  enter: 0.30,
+  back: 0.24,
+  failed: 0.32,
+  notification: 0.30,
 };
 
 const STORAGE_KEY_MUTED = 'cherry_sound_muted';
 
 const audioCache: Partial<Record<SoundCategory, HTMLAudioElement>> = {};
 let lastScrollTime = 0;
-const SCROLL_THROTTLE_MS = 120;
+const SCROLL_THROTTLE_MS = 110;
 
 let audioCtx: AudioContext | null = null;
 
@@ -50,73 +50,83 @@ function getAudioContext(): AudioContext | null {
 }
 
 /**
- * 1. Scroll / Tab switch: Warm wooden/mechanical micro-tap (220Hz -> 140Hz with lowpass filter)
+ * 1. Scroll / Selection: Signature Cherry Pop (Crisp Ceramic Click + 540Hz->380Hz Resonant Body)
+ * Distinctive, snappy, non-typical tactile feedback.
  */
 function synthScroll(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
   const filter = ctx.createBiquadFilter();
-
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(850, t);
+  filter.frequency.setValueAtTime(1400, t);
 
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(220, t);
-  osc.frequency.exponentialRampToValueAtTime(140, t + 0.035);
+  // Transient micro-click (1250Hz for 6ms)
+  const clickOsc = ctx.createOscillator();
+  const clickGain = ctx.createGain();
+  clickOsc.type = 'sine';
+  clickOsc.frequency.setValueAtTime(1250, t);
+  clickGain.gain.setValueAtTime(vol * 0.35, t);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.008);
 
-  gain.gain.setValueAtTime(vol * 0.7, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+  // Resonant rounded body (540Hz -> 380Hz)
+  const bodyOsc = ctx.createOscillator();
+  const bodyGain = ctx.createGain();
+  bodyOsc.type = 'sine';
+  bodyOsc.frequency.setValueAtTime(540, t);
+  bodyOsc.frequency.exponentialRampToValueAtTime(380, t + 0.035);
+  bodyGain.gain.setValueAtTime(vol * 0.65, t);
+  bodyGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
 
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(ctx.destination);
+  clickOsc.connect(filter);
+  bodyOsc.connect(filter);
+  filter.connect(clickGain);
+  filter.connect(bodyGain);
+  clickGain.connect(ctx.destination);
+  bodyGain.connect(ctx.destination);
 
-  osc.start(t);
-  osc.stop(t + 0.038);
+  clickOsc.start(t);
+  clickOsc.stop(t + 0.01);
+  bodyOsc.start(t);
+  bodyOsc.stop(t + 0.045);
 }
 
 /**
- * 2. Enter / Create: Warm marimba confirmation chime (G4 392Hz + D5 587.3Hz)
+ * 2. Enter / Create: Radiant Major Triad Chime (C5 523Hz + E5 659Hz + G5 784Hz)
  */
 function synthEnter(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(1600, t);
+  filter.frequency.setValueAtTime(2200, t);
 
-  const osc1 = ctx.createOscillator();
-  const gain1 = ctx.createGain();
-  osc1.type = 'sine';
-  osc1.frequency.setValueAtTime(392, t);
-  gain1.gain.setValueAtTime(0, t);
-  gain1.gain.linearRampToValueAtTime(vol * 0.7, t + 0.004);
-  gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+  const notes = [
+    { freq: 523.25, delay: 0.000, gainMul: 0.32, dur: 0.16 },
+    { freq: 659.25, delay: 0.012, gainMul: 0.28, dur: 0.18 },
+    { freq: 783.99, delay: 0.024, gainMul: 0.24, dur: 0.20 },
+  ];
 
-  const osc2 = ctx.createOscillator();
-  const gain2 = ctx.createGain();
-  osc2.type = 'sine';
-  osc2.frequency.setValueAtTime(587.3, t + 0.015);
-  gain2.gain.setValueAtTime(0, t);
-  gain2.gain.setValueAtTime(0, t + 0.015);
-  gain2.gain.linearRampToValueAtTime(vol * 0.55, t + 0.02);
-  gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+  notes.forEach(({ freq, delay, gainMul, dur }) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const startT = t + delay;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, startT);
 
-  osc1.connect(filter);
-  osc2.connect(filter);
-  filter.connect(gain1);
-  filter.connect(gain2);
-  gain1.connect(ctx.destination);
-  gain2.connect(ctx.destination);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.setValueAtTime(0, startT);
+    gain.gain.linearRampToValueAtTime(vol * gainMul, startT + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, startT + dur);
 
-  osc1.start(t);
-  osc1.stop(t + 0.2);
-  osc2.start(t + 0.015);
-  osc2.stop(t + 0.24);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(startT);
+    osc.stop(startT + dur + 0.01);
+  });
 }
 
 /**
- * 3. Back / Cancel: Soft, low downward pop (240Hz -> 140Hz)
+ * 3. Back / Cancel: Crisp Gentle Pop (420Hz -> 280Hz)
  */
 function synthBack(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
@@ -125,50 +135,50 @@ function synthBack(ctx: AudioContext, vol: number) {
   const filter = ctx.createBiquadFilter();
 
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(650, t);
+  filter.frequency.setValueAtTime(1100, t);
 
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(240, t);
-  osc.frequency.exponentialRampToValueAtTime(140, t + 0.06);
+  osc.frequency.setValueAtTime(420, t);
+  osc.frequency.exponentialRampToValueAtTime(280, t + 0.05);
 
   gain.gain.setValueAtTime(vol * 0.65, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
 
   osc.connect(filter);
   filter.connect(gain);
   gain.connect(ctx.destination);
 
   osc.start(t);
-  osc.stop(t + 0.065);
+  osc.stop(t + 0.055);
 }
 
 /**
- * 4. Notification / Alert: Luxurious Apple/Linear-grade dual chime (A4 440Hz -> E5 659.25Hz)
+ * 4. Notification / Alert: Airy Dual Chime (F5 698Hz -> A5 880Hz + C6 harmonic)
  */
 function synthNotification(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(2000, t);
+  filter.frequency.setValueAtTime(2400, t);
 
-  // Note 1: A4 (440Hz)
+  // Note 1: F5 (698Hz)
   const osc1 = ctx.createOscillator();
   const gain1 = ctx.createGain();
   osc1.type = 'sine';
-  osc1.frequency.setValueAtTime(440, t);
+  osc1.frequency.setValueAtTime(698.46, t);
   gain1.gain.setValueAtTime(0, t);
-  gain1.gain.linearRampToValueAtTime(vol * 0.75, t + 0.006);
-  gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  gain1.gain.linearRampToValueAtTime(vol * 0.70, t + 0.005);
+  gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
 
-  // Note 2: E5 (659.25Hz) starting 60ms later
+  // Note 2: A5 (880Hz) starting 50ms later with subtle harmonic
   const osc2 = ctx.createOscillator();
   const gain2 = ctx.createGain();
   osc2.type = 'sine';
-  osc2.frequency.setValueAtTime(659.25, t + 0.06);
+  osc2.frequency.setValueAtTime(880.0, t + 0.05);
   gain2.gain.setValueAtTime(0, t);
-  gain2.gain.setValueAtTime(0, t + 0.06);
-  gain2.gain.linearRampToValueAtTime(vol * 0.85, t + 0.066);
-  gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+  gain2.gain.setValueAtTime(0, t + 0.05);
+  gain2.gain.linearRampToValueAtTime(vol * 0.75, t + 0.055);
+  gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
 
   osc1.connect(filter);
   osc2.connect(filter);
@@ -178,34 +188,34 @@ function synthNotification(ctx: AudioContext, vol: number) {
   gain2.connect(ctx.destination);
 
   osc1.start(t);
-  osc1.stop(t + 0.26);
-  osc2.start(t + 0.06);
-  osc2.stop(t + 0.40);
+  osc1.stop(t + 0.24);
+  osc2.start(t + 0.05);
+  osc2.stop(t + 0.34);
 }
 
 /**
- * 5. Failed: Gentle low muffled double knock (130Hz and 95Hz)
+ * 5. Failed: Crisp Wooden Double Knock (280Hz and 220Hz)
  */
 function synthFailed(ctx: AudioContext, vol: number) {
   const t = ctx.currentTime;
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(320, t);
+  filter.frequency.setValueAtTime(600, t);
 
   const osc1 = ctx.createOscillator();
   const gain1 = ctx.createGain();
   osc1.type = 'sine';
-  osc1.frequency.setValueAtTime(130, t);
-  gain1.gain.setValueAtTime(vol * 0.7, t);
-  gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  osc1.frequency.setValueAtTime(280, t);
+  gain1.gain.setValueAtTime(vol * 0.65, t);
+  gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
 
   const osc2 = ctx.createOscillator();
   const gain2 = ctx.createGain();
   osc2.type = 'sine';
-  osc2.frequency.setValueAtTime(95, t + 0.075);
+  osc2.frequency.setValueAtTime(220, t + 0.065);
   gain2.gain.setValueAtTime(0, t);
-  gain2.gain.setValueAtTime(vol * 0.6, t + 0.075);
-  gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+  gain2.gain.setValueAtTime(vol * 0.60, t + 0.065);
+  gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
 
   osc1.connect(filter);
   osc2.connect(filter);
@@ -215,9 +225,9 @@ function synthFailed(ctx: AudioContext, vol: number) {
   gain2.connect(ctx.destination);
 
   osc1.start(t);
-  osc1.stop(t + 0.06);
-  osc2.start(t + 0.075);
-  osc2.stop(t + 0.14);
+  osc1.stop(t + 0.045);
+  osc2.start(t + 0.065);
+  osc2.stop(t + 0.12);
 }
 
 export function isSoundMuted(): boolean {
@@ -249,7 +259,7 @@ export function toggleSound(): boolean {
 }
 
 /**
- * Play a high-definition studio UI sound effect.
+ * Play a balanced, studio-grade UI sound effect.
  */
 export function playSound(category: SoundCategory): void {
   if (typeof window === 'undefined') {
@@ -260,7 +270,6 @@ export function playSound(category: SoundCategory): void {
     return;
   }
 
-  // Throttle rapid scroll sounds
   if (category === 'scroll') {
     const now = Date.now();
     if (now - lastScrollTime < SCROLL_THROTTLE_MS) {
@@ -271,7 +280,6 @@ export function playSound(category: SoundCategory): void {
 
   const vol = VOLUMES[category] ?? 0.25;
 
-  // Primary: Instant Web Audio synthesis with studio acoustic shaping
   const ctx = getAudioContext();
   if (ctx && ctx.state === 'running') {
     try {
@@ -297,7 +305,6 @@ export function playSound(category: SoundCategory): void {
     }
   }
 
-  // Fallback: HTMLAudioElement playing 320kbps MP3 / WAV
   try {
     let audio = audioCache[category];
     if (!audio) {
@@ -311,9 +318,7 @@ export function playSound(category: SoundCategory): void {
 
     const promise = audio.play();
     if (promise && typeof promise.catch === 'function') {
-      promise.catch(() => {
-        // Autoplay policy or user interaction needed: fail silently
-      });
+      promise.catch(() => {});
     }
   } catch {
     // Fail silently
@@ -326,7 +331,6 @@ export const playFailed = () => playSound('failed');
 export const playNotification = () => playSound('notification');
 export const playScroll = () => playSound('scroll');
 
-// Compatibility interface
 export const sound = {
   play: (cat: SoundCategory) => playSound(cat),
   toggle: () => toggleSound(),
