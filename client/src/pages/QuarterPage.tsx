@@ -26,6 +26,7 @@ const KANBAN_COLUMNS: Array<{ status: KanbanStatus; label: string }> = [
 
 export const QuarterPage: React.FC = () => {
   const {
+    todayStr,
     activeQuarterId,
     openTaskDrawer,
     openPlanModal,
@@ -112,8 +113,26 @@ export const QuarterPage: React.FC = () => {
       dateLabel: `D${i + 1}`,
     }));
 
-    return { label, dateRange, days, startDay, monthStr, year };
+    return { label, dateRange, days, startDay, endDay, month, monthStr, year };
   }, [currentPeriodId, isSurplus, quarterNum, totalDays]);
+
+  // Compute which day number represents "today" within the currently viewed period
+  const todayDayNum = useMemo(() => {
+    try {
+      const parts = (todayStr || '').split('-').map(Number);
+      if (parts.length === 3) {
+        const [y, m, d] = parts;
+        if (y === periodMeta.year && m === periodMeta.month) {
+          if (d >= periodMeta.startDay && d <= periodMeta.endDay) {
+            return d - periodMeta.startDay + 1;
+          }
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return null;
+  }, [todayStr, periodMeta]);
 
   const { push: toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>(() => cachedPeriodTasks || []);
@@ -493,6 +512,7 @@ export const QuarterPage: React.FC = () => {
 
           {periodMeta.days.map((d) => {
             const isSelected = selectedDayFilter === d.dayNum;
+            const isToday = todayDayNum === d.dayNum;
             return (
               <button
                 key={d.dayNum}
@@ -511,6 +531,13 @@ export const QuarterPage: React.FC = () => {
                 }`}
               >
                 {d.dateLabel}
+                {isToday && (
+                  <span
+                    className="absolute top-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-[#FF5252] pointer-events-none"
+                    title="Today"
+                    aria-label="Today"
+                  />
+                )}
               </button>
             );
           })}
