@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { api } from '../lib/api';
 import { playNotification, playFailed, playEnter } from '../lib/sound';
-import { ConversationSummary, PeriodType, FocusState } from '../types';
+import { ConversationSummary, PeriodType, FocusState, Task } from '../types';
 
 export interface TaskDrawerData {
   task?: any;
@@ -43,6 +43,15 @@ interface EcosystemContextType {
   toggleFocus: () => Promise<void>;
   toggleLemonDns: (enable?: boolean) => Promise<boolean>;
   completeFocusSession: () => Promise<void>;
+
+  // Preloaded Data Cache for instant page switches
+  cachedDayTasks: Task[];
+  setCachedDayTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  cachedPeriodTasks: Task[];
+  setCachedPeriodTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  cachedRoutines: any[];
+  isDataPreloaded: boolean;
+  preloadData: (tStr?: string, qId?: string) => Promise<void>;
 
   // Global Workspace Invalidation Revision
   workspaceRevision: number;
@@ -103,11 +112,43 @@ export const EcosystemProvider: React.FC<{ children: ReactNode }> = ({ children 
     return localStorage.getItem('cherry_active_conversation_id') || '';
   });
 
+  // Preloaded Data Caching (stale-while-revalidate)
+  const [cachedDayTasks, setCachedDayTasks] = useState<Task[]>([]);
+  const [cachedPeriodTasks, setCachedPeriodTasks] = useState<Task[]>([]);
+  const [cachedRoutines, setCachedRoutines] = useState<any[]>([]);
+  const [isDataPreloaded, setIsDataPreloaded] = useState<boolean>(false);
+
   // Global Workspace Invalidation
   const [workspaceRevision, setWorkspaceRevision] = useState<number>(0);
   const bumpWorkspaceRevision = () => {
     setWorkspaceRevision((prev) => prev + 1);
   };
+
+  const preloadData = async (tStr?: string, qId?: string) => {
+    const targetDate = tStr || todayStr;
+    const targetQuarter = qId || activeQuarterId;
+    try {
+      const [dayData, periodData] = await Promise.allSettled([
+        api.getDayTasks(targetDate),
+        api.getPeriodTasks(targetQuarter),
+      ]);
+      if (dayData.status === 'fulfilled') {
+        setCachedDayTasks(dayData.value.tasks || []);
+        setCachedRoutines(dayData.value.routines || []);
+      }
+      if (periodData.status === 'fulfilled') {
+        setCachedPeriodTasks(periodData.value || []);
+      }
+      setIsDataPreloaded(true);
+    } catch (err) {
+      console.debug('Failed to preload client data', err);
+    }
+  };
+
+  // Eagerly preload data on mount and whenever revision changes
+  useEffect(() => {
+    preloadData(todayStr, activeQuarterId);
+  }, [todayStr, activeQuarterId, workspaceRevision]);
 
   // AI Drawer State (420px slide-over)
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState<boolean>(false);
@@ -365,6 +406,13 @@ export const EcosystemProvider: React.FC<{ children: ReactNode }> = ({ children 
         toggleFocus,
         toggleLemonDns,
         completeFocusSession,
+        cachedDayTasks,
+        setCachedDayTasks,
+        cachedPeriodTasks,
+        setCachedPeriodTasks,
+        cachedRoutines,
+        isDataPreloaded,
+        preloadData,
         workspaceRevision,
         bumpWorkspaceRevision,
         isAiDrawerOpen,

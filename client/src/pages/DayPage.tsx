@@ -3,7 +3,6 @@ import {
   CheckSquare,
   Square,
   Plus,
-  ChevronRight,
   Circle,
   CheckCircle2,
   Clock,
@@ -26,12 +25,20 @@ export const DayPage: React.FC = () => {
     isAiDrawerOpen,
     workspaceRevision,
     bumpWorkspaceRevision,
+    cachedDayTasks,
+    setCachedDayTasks,
   } = useEcosystem();
 
   const { push: toast } = useToast();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tasks, setTasks] = useState<Task[]>(() => cachedDayTasks || []);
+  const [loading, setLoading] = useState(() => !cachedDayTasks || cachedDayTasks.length === 0);
   const [tierFilter, setTierFilter] = useState<'ALL' | 'Must Do' | 'Should Do' | 'Routine'>('ALL');
+
+  // Delayed sorting map for requirement 12 (3-second grace period)
+  const [delayedSortMap, setDelayedSortMap] = useState<
+    Record<string, { sortStatus: KanbanStatus; expireAt: number }>
+  >({});
+
   const tierContainerRef = useRef<HTMLDivElement>(null);
   const tierItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [tierPillStyle, setTierPillStyle] = useState<{
@@ -153,11 +160,13 @@ export const DayPage: React.FC = () => {
     }
   }, [todayStr]);
 
-  const loadTasks = async () => {
+  const loadTasks = async (showLoadingSpinner = false) => {
     try {
-      setLoading(true);
+      if (showLoadingSpinner) setLoading(true);
       const data = await api.getDayTasks(todayStr);
-      setTasks(data.tasks || []);
+      const fetchedTasks = data.tasks || [];
+      setTasks(fetchedTasks);
+      setCachedDayTasks(fetchedTasks);
     } catch (err) {
       console.debug('Failed to load day tasks', err);
     } finally {
@@ -166,10 +175,45 @@ export const DayPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadTasks();
+    const hasCached = cachedDayTasks && cachedDayTasks.length > 0;
+    loadTasks(!hasCached);
   }, [todayStr, workspaceRevision]);
 
+  // Requirement 1: Only tasks that are either of that day or of all days
+  const isTaskForToday = (t: Task): boolean => {
+    const totalDays = dayMeta.totalDays;
+    const currentDay = dayMeta.dayInPeriod;
+    const days =
+      t.scheduled_days && t.scheduled_days.length > 0
+        ? t.scheduled_days
+        : t.start_day !== undefined && t.end_day !== undefined
+        ? Array.from({ length: t.end_day - t.start_day + 1 }, (_, i) => t.start_day! + i)
+        : [];
+
+    if (days.length === 0) {
+      // Check subtasks if present
+      if (t.subtasks && t.subtasks.length > 0) {
+        const subDays = t.subtasks.flatMap((st) =>
+          st.selected_days && st.selected_days.length > 0
+            ? st.selected_days
+            : st.start_day !== undefined && st.end_day !== undefined
+            ? Array.from({ length: st.end_day - st.start_day + 1 }, (_, i) => st.start_day! + i)
+            : []
+        );
+        if (subDays.length > 0) {
+          return subDays.length >= totalDays || subDays.includes(currentDay);
+        }
+      }
+      return true; // Untagged falls back to today
+    }
+
+    const isAllDays = days.length >= totalDays;
+    const isThisDay = days.includes(currentDay);
+    return isAllDays || isThisDay;
+  };
+
   // Status cycle: Not started -> In progress -> Done -> Not started
+  // Requirement 12: 3-second delay on rearranging when user clicks in-progress
   const cycleTaskStatus = async (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
     playScroll();
@@ -180,14 +224,38 @@ export const DayPage: React.FC = () => {
         ? 'Done'
         : 'Not started';
 
+    // Hold sorting position for 3 seconds so the item doesn't jump from under cursor
+    setDelayedSortMap((prev) => ({
+      ...prev,
+      [task.task_id]: {
+        sortStatus: task.status,
+        expireAt: Date.now() + 3000,
+      },
+    }));
+
+    setTimeout(() => {
+      setDelayedSortMap((prev) => {
+        const next = { ...prev };
+        delete next[task.task_id];
+        return next;
+      });
+    }, 3000);
+
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) => (t.task_id === task.task_id ? { ...t, status: nextStatus } : t))
+    );
+
     try {
       const updated = await api.updateTaskStatus(task.task_id, nextStatus);
       setTasks((prev) => prev.map((t) => (t.task_id === task.task_id ? updated : t)));
+      setCachedDayTasks((prev) => prev.map((t) => (t.task_id === task.task_id ? updated : t)));
       playNotification();
       bumpWorkspaceRevision();
     } catch {
       playFailed();
       toast('error', 'Failed to update task status.');
+      loadTasks();
     }
   };
 
@@ -203,6 +271,7 @@ export const DayPage: React.FC = () => {
     try {
       const updated = await api.toggleSubtask(taskId, subtaskId, !currentVal);
       setTasks((prev) => prev.map((t) => (t.task_id === taskId ? updated : t)));
+      setCachedDayTasks((prev) => prev.map((t) => (t.task_id === taskId ? updated : t)));
       playNotification();
       bumpWorkspaceRevision();
     } catch {
@@ -217,6 +286,7 @@ export const DayPage: React.FC = () => {
     try {
       await api.deleteTask(taskId);
       setTasks((prev) => prev.filter((t) => t.task_id !== taskId));
+      setCachedDayTasks((prev) => prev.filter((t) => t.task_id !== taskId));
       playNotification();
       toast('info', `Deleted "${taskTitle}"`);
       bumpWorkspaceRevision();
@@ -226,26 +296,63 @@ export const DayPage: React.FC = () => {
     }
   };
 
-  // Filter tasks by selected Tier
-  const filteredTasks = useMemo(() => {
-    if (tierFilter === 'ALL') return tasks;
-    return tasks.filter((t) => (t.tier || 'Must Do') === tierFilter);
-  }, [tasks, tierFilter]);
+  // Status priority for sorting: In progress (0) -> Not started (1) -> Done (2)
+  const getStatusPriority = (st: KanbanStatus): number => {
+    if (st === 'In progress') return 0;
+    if (st === 'Not started') return 1;
+    return 2; // Done
+  };
+
+  // Sort tasks according to Requirement 12
+  const sortTasks = (taskList: Task[]): Task[] => {
+    return [...taskList].sort((a, b) => {
+      const aDelay = delayedSortMap[a.task_id];
+      const bDelay = delayedSortMap[b.task_id];
+
+      const aEffectiveStatus =
+        aDelay && aDelay.expireAt > Date.now() ? aDelay.sortStatus : a.status;
+      const bEffectiveStatus =
+        bDelay && bDelay.expireAt > Date.now() ? bDelay.sortStatus : b.status;
+
+      const prioA = getStatusPriority(aEffectiveStatus);
+      const prioB = getStatusPriority(bEffectiveStatus);
+
+      if (prioA !== prioB) return prioA - prioB;
+      return (a.title || '').localeCompare(b.title || '');
+    });
+  };
+
+  // Filter tasks to today only, then split into tiers
+  const todayTasks = useMemo(() => {
+    return tasks.filter(isTaskForToday);
+  }, [tasks, dayMeta.dayInPeriod, dayMeta.totalDays]);
+
+  const routineTasks = useMemo(() => {
+    return sortTasks(todayTasks.filter((t) => (t.tier || '').toLowerCase() === 'routine'));
+  }, [todayTasks, delayedSortMap]);
+
+  const mustDoTasks = useMemo(() => {
+    return sortTasks(todayTasks.filter((t) => (t.tier || '').toLowerCase() === 'must do'));
+  }, [todayTasks, delayedSortMap]);
+
+  const shouldDoTasks = useMemo(() => {
+    return sortTasks(todayTasks.filter((t) => (t.tier || '').toLowerCase() === 'should do'));
+  }, [todayTasks, delayedSortMap]);
 
   const completedCount = useMemo(() => {
-    return tasks.filter((t) => t.status === 'Done').length;
-  }, [tasks]);
+    return todayTasks.filter((t) => t.status === 'Done').length;
+  }, [todayTasks]);
 
   const progressPercent = useMemo(() => {
-    if (tasks.length === 0) return 0;
-    return Math.round((completedCount / tasks.length) * 100);
-  }, [tasks, completedCount]);
+    if (todayTasks.length === 0) return 0;
+    return Math.round((completedCount / todayTasks.length) * 100);
+  }, [todayTasks, completedCount]);
 
   const getTierBadge = (tier?: TaskTier | string) => {
     const norm = (tier || '').toLowerCase();
     if (norm.includes('must')) {
       return (
-        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 shrink-0">
           <Flame className="h-3 w-3 text-rose-500" />
           <span>Must Do</span>
         </span>
@@ -253,14 +360,14 @@ export const DayPage: React.FC = () => {
     }
     if (norm.includes('should')) {
       return (
-        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 shrink-0">
           <Clock className="h-3 w-3 text-orange-500" />
           <span>Should Do</span>
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+      <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0">
         <Repeat className="h-3 w-3 text-purple-500" />
         <span>Routine</span>
       </span>
@@ -277,66 +384,269 @@ export const DayPage: React.FC = () => {
     const isSurplus = (task.period_id || '').includes('SURPLUS');
     const tDays = isSurplus ? 3 : 7;
     const label =
-      days.length === tDays
+      days.length >= tDays
         ? 'All Days'
         : days.length === 1
         ? `Day ${days[0]}`
         : `D${days[0]}–${days[days.length - 1]}`;
 
     return (
-      <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-200/60 dark:border-stone-700/60 shrink-0">
+      <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-200/60 dark:border-stone-700/60 shrink-0 whitespace-nowrap">
         {label}
       </span>
     );
   };
 
+  // Requirement 3: Status pills colored, but subtle
   const getStatusBadge = (status: KanbanStatus) => {
     switch (status) {
       case 'Done':
         return (
-          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-            <CheckCircle2 className="h-3 w-3" /> Done
+          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 transition-colors">
+            <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+            <span>Done</span>
           </span>
         );
       case 'In progress':
         return (
-          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
-            <Clock className="h-3 w-3" /> In Progress
+          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/25 transition-colors">
+            <Clock className="h-3 w-3 text-sky-600 dark:text-sky-400" />
+            <span>In Progress</span>
           </span>
         );
       default:
         return (
-          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-200 dark:border-stone-700">
-            <Circle className="h-3 w-3" /> Not Started
+          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border border-stone-200/80 dark:border-stone-700/80 transition-colors">
+            <Circle className="h-3 w-3 text-stone-400" />
+            <span>Not Started</span>
           </span>
         );
     }
   };
 
+  // Render a single task card
+  const renderTaskCard = (task: Task) => {
+    const isDone = task.status === 'Done';
+    const subtasks = task.subtasks || [];
+    const doneSubtasks = subtasks.filter((s) => s.is_completed).length;
+
+    return (
+      <div
+        key={task.task_id}
+        onClick={() => openTaskDrawer({ task, mode: 'edit' })}
+        className={`glass-card rounded-2xl p-4 border transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer group shadow-2xs hover:shadow-md hover:border-black/20 dark:hover:border-white/20 select-none overflow-hidden ${
+          isDone
+            ? 'border-black/[0.04] dark:border-white/[0.05] opacity-75'
+            : 'border-black/[0.07] dark:border-white/[0.09]'
+        }`}
+      >
+        <div className="space-y-2.5">
+          {/* Card Top: Title, Status toggle, Trash */}
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="flex items-start gap-2.5 flex-1 min-w-0">
+              <button
+                type="button"
+                onClick={(e) => cycleTaskStatus(task, e)}
+                className="mt-0.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition shrink-0"
+                title="Click to cycle status"
+              >
+                {isDone ? (
+                  <CheckSquare className="h-4 w-4 text-emerald-500 fill-emerald-500/20" />
+                ) : task.status === 'In progress' ? (
+                  <Clock className="h-4 w-4 text-sky-500" />
+                ) : (
+                  <Square className="h-4 w-4" />
+                )}
+              </button>
+
+              <h4
+                className={`text-xs font-semibold leading-snug break-words min-w-0 flex-1 ${
+                  isDone
+                    ? 'line-through text-stone-400 dark:text-stone-500'
+                    : 'text-stone-900 dark:text-white'
+                }`}
+              >
+                {task.title}
+              </h4>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => handleDeleteTask(task.task_id, task.title, e)}
+                title="Delete task"
+                className="p-1 rounded-md text-stone-300 dark:text-stone-600 hover:text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition shrink-0"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+              <div
+                onClick={(e) => cycleTaskStatus(task, e)}
+                className="cursor-pointer"
+                title="Change status"
+              >
+                {getStatusBadge(task.status)}
+              </div>
+            </div>
+          </div>
+
+          {/* Card Badges Row */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {getTierBadge(task.tier)}
+            {getTaskDaysBadge(task)}
+          </div>
+
+          {task.description && (
+            <p className="text-2xs text-stone-500 line-clamp-2">
+              {task.description}
+            </p>
+          )}
+
+          {/* Subtasks Checklist */}
+          {subtasks.length > 0 && (
+            <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.06] space-y-1">
+              <div className="flex items-center justify-between text-3xs text-stone-400 font-mono">
+                <span>Subtasks</span>
+                <span>
+                  {doneSubtasks}/{subtasks.length} done
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                {subtasks.map((st) => (
+                  <div
+                    key={st.subtask_id}
+                    onClick={(e) =>
+                      handleToggleSubtask(
+                        task.task_id,
+                        st.subtask_id,
+                        st.is_completed,
+                        e
+                      )
+                    }
+                    className="flex items-center justify-between p-1 rounded hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition text-2xs select-none"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {st.is_completed ? (
+                        <CheckSquare className="h-3 w-3 text-emerald-500 shrink-0" />
+                      ) : (
+                        <Square className="h-3 w-3 text-stone-400 shrink-0" />
+                      )}
+                      <span
+                        className={`truncate ${
+                          st.is_completed
+                            ? 'line-through text-stone-400'
+                            : 'text-stone-700 dark:text-stone-300'
+                        }`}
+                      >
+                        {st.title}
+                      </span>
+                    </div>
+
+                    {(st.start_day !== undefined || st.end_day !== undefined) && (
+                      <span className="font-mono text-3xs px-1 rounded bg-stone-200/60 dark:bg-stone-800 text-stone-500 shrink-0">
+                        D{st.start_day ?? 1}–{st.end_day ?? 7}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Section column component
+  const renderSectionColumn = (
+    title: string,
+    tier: TaskTier,
+    icon: React.ReactNode,
+    taskList: Task[],
+    accentBorder: string,
+    emptyMessage: string
+  ) => {
+    return (
+      <div className="flex flex-col rounded-3xl glass-panel border border-black/[0.06] dark:border-white/[0.08] p-4 shadow-soft space-y-3 min-w-0">
+        {/* Column Header */}
+        <div className="flex items-center justify-between pb-2 border-b border-black/[0.04] dark:border-white/[0.06]">
+          <div className="flex items-center gap-2 min-w-0">
+            {icon}
+            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200 truncate">
+              {title}
+            </h3>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="font-mono text-2xs px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-stone-600 dark:text-stone-400 font-bold">
+              {taskList.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                playEnter();
+                openTaskDrawer({ mode: 'create', tier });
+              }}
+              className="p-1 rounded-full text-stone-400 hover:text-cherry-flesh hover:bg-cherry-500/10 transition"
+              title={`Add ${title} task`}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Task Cards or Restrained Empty State */}
+        <div className="space-y-2.5 overflow-y-auto overflow-x-hidden pr-0.5">
+          {taskList.length === 0 ? (
+            <div className={`p-6 rounded-2xl border border-dashed ${accentBorder} text-center space-y-2`}>
+              <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-xl bg-black/[0.02] dark:bg-white/[0.03] text-stone-400">
+                <ListTodo className="h-4 w-4" />
+              </div>
+              <p className="text-xs font-medium text-stone-400">{emptyMessage}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  playEnter();
+                  openTaskDrawer({ mode: 'create', tier });
+                }}
+                className="text-2xs font-semibold text-cherry-flesh hover:underline inline-flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" />
+                <span>Add task</span>
+              </button>
+            </div>
+          ) : (
+            taskList.map(renderTaskCard)
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
-      {/* Calm, Minimalist Day Header */}
-      <div className="glass-panel rounded-3xl p-5 sm:p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-soft space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
+      {/* Calm, Minimalist Day Header - 0.65 of original size, aligned on the left (Feedback 3) */}
+      <div className="w-full lg:w-[65%] glass-panel rounded-3xl p-5 sm:p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-soft space-y-4">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900">
-                {dayMeta.periodName} • Day {dayMeta.dayInPeriod} of {dayMeta.totalDays}
+              {/* Requirement 9: Remove "of 7", keep "Quarter 4 • Day 3" */}
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-2xs">
+                {dayMeta.periodName} • Day {dayMeta.dayInPeriod}
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-stone-900 dark:text-white">
+            <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-stone-900 dark:text-white">
               {dayMeta.formattedDate}
             </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => {
                 playEnter();
                 openTaskDrawer({ mode: 'create' });
               }}
-              className="focus-ring flex items-center gap-1.5 px-4 py-2 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition hover:scale-[1.02]"
+              className="focus-ring flex items-center gap-1.5 px-4 py-2 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition hover:scale-[1.02] active:scale-95"
             >
               <Plus className="h-4 w-4" />
               <span>New Task</span>
@@ -348,7 +658,7 @@ export const DayPage: React.FC = () => {
         <div className="space-y-1.5 pt-2 border-t border-black/[0.05] dark:border-white/[0.08]">
           <div className="flex items-center justify-between text-xs text-stone-600 dark:text-stone-400">
             <span>
-              {completedCount} of {tasks.length} tasks completed
+              {completedCount} of {todayTasks.length} tasks completed today
             </span>
             <span className="font-semibold">{progressPercent}%</span>
           </div>
@@ -361,11 +671,11 @@ export const DayPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Tier Filter Pills (Kiwi Segmented Style with Dynamic Sliding Pill) */}
+      {/* Requirement 9: Tier Filter Slider slightly bigger & more comfortable */}
       <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
         <div
           ref={tierContainerRef}
-          className="relative flex items-center gap-1 p-1 rounded-full bg-transparent border border-black/[0.06] dark:border-white/[0.08]"
+          className="relative flex items-center gap-1 p-1.5 rounded-full bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08]"
         >
           {/* Dynamic Sliding Active Indicator Pill */}
           <div
@@ -395,188 +705,60 @@ export const DayPage: React.FC = () => {
                   playScroll();
                   setTierFilter(t);
                 }}
-                className={`relative z-10 px-3.5 py-1 rounded-full text-xs font-semibold transition-colors duration-200 ${
+                className={`relative z-10 px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-colors duration-200 select-none ${
                   isSelected
                     ? 'text-white dark:text-stone-900'
                     : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
                 }`}
               >
-                {t === 'ALL' ? 'All Tasks' : t}
+                {t === 'ALL' ? 'All Sections' : t}
               </button>
             );
           })}
         </div>
 
         <span className="text-xs text-stone-400 font-medium hidden sm:inline">
-          {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'}
+          {todayTasks.length} {todayTasks.length === 1 ? 'task' : 'tasks'} today
         </span>
       </div>
 
-      {/* Tasks List */}
+      {/* Tasks Content / Grid */}
       {loading ? (
-        <div className="flex min-h-[30vh] items-center justify-center">
+        <div className="flex min-h-[35vh] items-center justify-center">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-stone-300 dark:border-stone-700 border-t-cherry-flesh" />
         </div>
-      ) : filteredTasks.length === 0 ? (
-        /* Kiwi-Style Restrained Empty State */
-        <div className="glass-panel rounded-3xl p-8 sm:p-12 text-center border border-black/[0.06] dark:border-white/[0.08] shadow-soft space-y-4">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-400">
-            <ListTodo className="h-6 w-6" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-stone-900 dark:text-white">
-              No tasks scheduled for today
-            </h3>
-            <p className="text-xs text-stone-500 max-w-sm mx-auto">
-              Add your daily priorities to organize your day into Must Do and Should Do tasks.
-            </p>
-          </div>
-          <div className="flex items-center justify-center gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                playEnter();
-                openTaskDrawer({ mode: 'create' });
-              }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs font-semibold shadow-xs transition"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Create Task</span>
-            </button>
-          </div>
-        </div>
       ) : (
-        <div className="space-y-3">
-          {filteredTasks.map((task) => {
-            const isDone = task.status === 'Done';
-            const subtasks = task.subtasks || [];
-            const doneSubtasks = subtasks.filter((s) => s.is_completed).length;
+        /* Requirement 2: Routine section, Must do and Should do sections next to each other in a grid */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 items-start">
+          {(tierFilter === 'ALL' || tierFilter === 'Routine') &&
+            renderSectionColumn(
+              'Routine',
+              'Routine',
+              <Repeat className="h-4 w-4 text-purple-500 shrink-0" />,
+              routineTasks,
+              'border-purple-500/20',
+              'No routine tasks scheduled for today'
+            )}
 
-            return (
-              <div
-                key={task.task_id}
-                onClick={() => openTaskDrawer({ task, mode: 'edit' })}
-                className={`glass-card rounded-2xl p-4 sm:p-5 border transition-all cursor-pointer group shadow-soft hover:border-black/20 dark:hover:border-white/20 ${
-                  isDone
-                    ? 'border-black/[0.04] dark:border-white/[0.05] opacity-75'
-                    : 'border-black/[0.07] dark:border-white/[0.09]'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  {/* Left: Status Toggle & Title */}
-                  <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <button
-                      type="button"
-                      onClick={(e) => cycleTaskStatus(task, e)}
-                      className="mt-0.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition shrink-0"
-                      title="Click to cycle status"
-                    >
-                      {isDone ? (
-                        <CheckSquare className="h-5 w-5 text-emerald-500 fill-emerald-500/20" />
-                      ) : task.status === 'In progress' ? (
-                        <Clock className="h-5 w-5 text-blue-500" />
-                      ) : (
-                        <Square className="h-5 w-5" />
-                      )}
-                    </button>
+          {(tierFilter === 'ALL' || tierFilter === 'Must Do') &&
+            renderSectionColumn(
+              'Must Do',
+              'Must Do',
+              <Flame className="h-4 w-4 text-rose-500 shrink-0" />,
+              mustDoTasks,
+              'border-rose-500/20',
+              'No Must Do tasks scheduled for today'
+            )}
 
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3
-                          className={`text-sm sm:text-base font-semibold leading-snug transition-colors ${
-                            isDone
-                              ? 'line-through text-stone-400 dark:text-stone-500'
-                              : 'text-stone-900 dark:text-white'
-                          }`}
-                        >
-                          {task.title}
-                        </h3>
-                        {getTierBadge(task.tier)}
-                        {getTaskDaysBadge(task)}
-                      </div>
-
-                      {task.description && (
-                        <p className="text-xs text-stone-500 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Right: Trash Button, Status Pill & Arrow */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => handleDeleteTask(task.task_id, task.title, e)}
-                      title="Delete task"
-                      className="p-1 rounded-lg text-stone-300 dark:text-stone-600 hover:text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition shrink-0"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                    <div
-                      onClick={(e) => cycleTaskStatus(task, e)}
-                      className="cursor-pointer select-none"
-                    >
-                      {getStatusBadge(task.status)}
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 transition" />
-                  </div>
-                </div>
-
-                {/* Subtasks Checklist */}
-                {subtasks.length > 0 && (
-                  <div className="mt-3.5 pl-8 space-y-1.5 border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
-                    <div className="flex items-center justify-between text-2xs text-stone-400 font-medium">
-                      <span>Subtasks</span>
-                      <span>
-                        {doneSubtasks}/{subtasks.length} done
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      {subtasks.map((st) => (
-                        <div
-                          key={st.subtask_id}
-                          onClick={(e) =>
-                            handleToggleSubtask(
-                              task.task_id,
-                              st.subtask_id,
-                              st.is_completed,
-                              e
-                            )
-                          }
-                          className="flex items-center justify-between p-1.5 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition cursor-pointer select-none"
-                        >
-                          <div className="flex items-center gap-2">
-                            {st.is_completed ? (
-                              <CheckSquare className="h-3.5 w-3.5 text-emerald-500" />
-                            ) : (
-                              <Square className="h-3.5 w-3.5 text-stone-400" />
-                            )}
-                            <span
-                              className={`text-xs ${
-                                st.is_completed
-                                  ? 'line-through text-stone-400 dark:text-stone-500'
-                                  : 'text-stone-700 dark:text-stone-300'
-                              }`}
-                            >
-                              {st.title}
-                            </span>
-                          </div>
-
-                          {(st.start_day !== undefined || st.end_day !== undefined) && (
-                            <span className="font-mono text-2xs px-1.5 py-0.2 rounded bg-stone-200/60 dark:bg-stone-800 text-stone-500">
-                              D{st.start_day ?? 1}–{st.end_day ?? 7}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {(tierFilter === 'ALL' || tierFilter === 'Should Do') &&
+            renderSectionColumn(
+              'Should Do',
+              'Should Do',
+              <Clock className="h-4 w-4 text-orange-500 shrink-0" />,
+              shouldDoTasks,
+              'border-orange-500/20',
+              'No Should Do tasks scheduled for today'
+            )}
         </div>
       )}
     </div>

@@ -47,25 +47,27 @@
   }
 
   body {
-    background-color: #F8F9F5;
+    background-color: #FAF6F6;
     background-image: 
-      radial-gradient(at 15% 15%, rgba(255, 82, 82, 0.05) 0px, transparent 55%),
-      radial-gradient(at 85% 85%, rgba(137, 214, 109, 0.04) 0px, transparent 50%),
+      radial-gradient(at 15% 15%, rgba(255, 82, 82, 0.055) 0px, transparent 55%),
+      radial-gradient(at 85% 85%, rgba(255, 120, 120, 0.04) 0px, transparent 50%),
       radial-gradient(at 85% 15%, rgba(255, 82, 82, 0.03) 0px, transparent 45%);
     background-attachment: fixed;
     color: #1A1A1A;
     min-height: 100vh;
+    overflow-x: hidden;
     transition: background-color 0.25s ease, color 0.25s ease;
   }
 
   html.dark body {
-    background-color: #121310;
+    background-color: #141212;
     background-image: 
-      radial-gradient(at 15% 15%, rgba(255, 82, 82, 0.06) 0px, transparent 55%),
-      radial-gradient(at 85% 85%, rgba(137, 214, 109, 0.045) 0px, transparent 50%),
-      radial-gradient(at 80% 20%, rgba(255, 82, 82, 0.035) 0px, transparent 45%);
+      radial-gradient(at 15% 15%, rgba(255, 82, 82, 0.075) 0px, transparent 55%),
+      radial-gradient(at 85% 85%, rgba(255, 90, 90, 0.045) 0px, transparent 50%),
+      radial-gradient(at 80% 20%, rgba(255, 82, 82, 0.04) 0px, transparent 45%);
     background-attachment: fixed;
-    color: #F3F4F1;
+    color: #F5EEEE;
+    overflow-x: hidden;
   }
 
   /* Unbounded is strictly display-only for brand wordmarks and prominent hero typography */
@@ -79,8 +81,6 @@
   }
 
   button {
-    box-shadow: none !important;
-    text-shadow: none !important;
     white-space: nowrap !important;
   }
 
@@ -95,26 +95,46 @@
     color: #ffcccc;
   }
 
-  /* --- Minimalist Fruit Scrollbars --- */
-  ::-webkit-scrollbar {
+  /* --- Universal Harmonious Cherry Scrollbars (Requirement 5) --- */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 82, 82, 0.20) transparent;
+  }
+  html.dark * {
+    scrollbar-color: rgba(255, 82, 82, 0.28) transparent;
+  }
+  *::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
-  ::-webkit-scrollbar-track {
+  *::-webkit-scrollbar-track {
     background: transparent;
   }
-  ::-webkit-scrollbar-thumb {
+  *::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.12);
     border-radius: 9999px;
+    border: 1.5px solid transparent;
+    background-clip: padding-box;
+    transition: background-color 0.2s ease;
   }
-  html.dark ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.14);
+  html.dark *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1.5px solid transparent;
+    background-clip: padding-box;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.22);
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 82, 82, 0.45);
   }
-  html.dark ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.25);
+  html.dark *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 82, 82, 0.55);
+  }
+  *::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 
@@ -160,6 +180,53 @@
     box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 4px 20px -2px rgba(0, 0, 0, 0.35);
   }
 
+  /* Requirement 11 & User Feedback: Dedicated authentic frosted glass capsule button matching navbar glassmorphism */
+  .glass-btn-accent {
+    background: rgba(255, 255, 255, 0.40) !important;
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 82, 82, 0.18) 100%) !important;
+    border: 1.5px solid rgba(255, 82, 82, 0.40) !important;
+    box-shadow: 
+      0 8px 30px -4px rgba(255, 82, 82, 0.20), 
+      0 2px 8px -2px rgba(0, 0, 0, 0.04), 
+      inset 0 1px 2px 0 rgba(255, 255, 255, 0.95) !important;
+    color: #D32F2F !important;
+    -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+    backdrop-filter: blur(16px) saturate(180%) !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  html.dark .glass-btn-accent {
+    background: rgba(24, 25, 21, 0.45) !important;
+    background-image: linear-gradient(135deg, rgba(30, 31, 26, 0.65) 0%, rgba(255, 82, 82, 0.25) 100%) !important;
+    border: 1.5px solid rgba(255, 120, 120, 0.40) !important;
+    box-shadow: 
+      0 8px 32px 0 rgba(255, 82, 82, 0.30), 
+      0 2px 8px -1px rgba(0, 0, 0, 0.4), 
+      inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.20) !important;
+    color: #FFA5A5 !important;
+  }
+
+  .glass-btn-accent:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.60) !important;
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 82, 82, 0.28) 100%) !important;
+    border-color: rgba(255, 82, 82, 0.65) !important;
+    box-shadow: 
+      0 12px 36px 0 rgba(255, 82, 82, 0.28), 
+      0 4px 12px -2px rgba(0, 0, 0, 0.08), 
+      inset 0 1px 2.5px 0 rgba(255, 255, 255, 1) !important;
+    transform: translateY(-0.5px) !important;
+  }
+
+  html.dark .glass-btn-accent:hover:not(:disabled) {
+    background: rgba(28, 29, 25, 0.60) !important;
+    background-image: linear-gradient(135deg, rgba(35, 36, 30, 0.80) 0%, rgba(255, 82, 82, 0.35) 100%) !important;
+    border-color: rgba(255, 140, 140, 0.65) !important;
+    box-shadow: 
+      0 12px 36px 0 rgba(255, 82, 82, 0.38), 
+      inset 0 1px 2px 0 rgba(255, 255, 255, 0.30) !important;
+    transform: translateY(-0.5px) !important;
+  }
+
   /* Crystal-clear optical blur: preserves background visibility without milky opacity */
   @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
     .glass-capsule {
@@ -185,22 +252,18 @@
     }
   }
 
-  /* Tactile Interactive Flat Button Styles - Zero Glow */
+  /* Requirement 14: Fluid, immersive tactile button and card micro-interactions */
   .btn-interactive {
-    box-shadow: none !important;
-    transform: none !important;
-    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
   .btn-interactive:hover:not(:disabled) {
-    transform: none !important;
-    box-shadow: none !important;
+    transform: translateY(-0.5px) !important;
   }
   .btn-interactive:active:not(:disabled) {
-    transform: none !important;
-    box-shadow: none !important;
+    transform: scale(0.98) !important;
   }
 
-  /* Flat Action Buttons - Zero Glow, Pure Matte */
+  /* Action Buttons */
   .btn-glass-primary, .btn-primary {
     display: inline-flex;
     align-items: center;
@@ -213,39 +276,35 @@
     background: #FF5252;
     color: #FFFFFF;
     border: 1px solid transparent;
-    box-shadow: none !important;
-    transform: none !important;
-    transition: background-color 0.15s ease, opacity 0.15s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .btn-glass-primary:hover:not(:disabled), .btn-primary:hover:not(:disabled) {
     background: #E03E3E;
-    box-shadow: none !important;
-    transform: none !important;
+    transform: translateY(-0.5px);
+    box-shadow: 0 4px 12px -2px rgba(255, 82, 82, 0.35);
   }
 
   .btn-glass-primary:active:not(:disabled), .btn-primary:active:not(:disabled) {
     background: #CB2328;
-    box-shadow: none !important;
-    transform: none !important;
+    transform: scale(0.98);
   }
 
   .btn-glass-primary:disabled, .btn-primary:disabled {
     opacity: 0.45;
     cursor: not-allowed;
-    box-shadow: none !important;
   }
 
   html.dark .btn-glass-primary, html.dark .btn-primary {
     background: #FF5252;
     color: #FFFFFF;
     border: 1px solid transparent;
-    box-shadow: none !important;
   }
 
   html.dark .btn-glass-primary:hover:not(:disabled), html.dark .btn-primary:hover:not(:disabled) {
     background: #E03E3E;
-    box-shadow: none !important;
+    transform: translateY(-0.5px);
+    box-shadow: 0 4px 14px -2px rgba(255, 82, 82, 0.45);
   }
 
   .btn-glass-secondary, .btn-secondary {

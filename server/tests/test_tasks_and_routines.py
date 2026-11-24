@@ -43,6 +43,53 @@ async def test_kanban_three_status_and_subtasks():
     assert completed_task.status == "Done"
     assert completed_task.completed_at is not None
 
+    # 5. Requirement 12: Uncheck one subtask -> In progress
+    uncheck_one = await task_service.toggle_subtask(task.task_id, st2_id, False)
+    assert uncheck_one.status == "In progress"
+
+    # 6. Requirement 12: Uncheck ALL subtasks -> Status returns to "Not started"!
+    uncheck_all = await task_service.toggle_subtask(task.task_id, st1_id, False)
+    assert uncheck_all.status == "Not started"
+    assert uncheck_all.completed_at is None
+
+
+@pytest.mark.asyncio
+async def test_day_task_filtering_requirement_1():
+    # Create a task for Day 6 only in Q4 (Nov 22-28, so Day 3 is Nov 24, Day 6 is Nov 27)
+    task_d6 = await task_service.create_task(
+        period_id="2026-11-Q4",
+        period_type="Q4",
+        title="D6 Only Task",
+        scheduled_days=[6],
+        target_date="2026-11-24", # created while on Nov 24
+    )
+
+    # Create a task for All Days (D1..D7)
+    task_all = await task_service.create_task(
+        period_id="2026-11-Q4",
+        period_type="Q4",
+        title="All Days Task",
+        scheduled_days=[1, 2, 3, 4, 5, 6, 7],
+    )
+
+    # Create a task for Day 3 only
+    task_d3 = await task_service.create_task(
+        period_id="2026-11-Q4",
+        period_type="Q4",
+        title="D3 Only Task",
+        scheduled_days=[3],
+    )
+
+    # On Nov 24 (Day 3 of Q4):
+    day_3_tasks = await task_service.get_tasks_for_day("2026-11-24")
+    day_3_ids = [t.task_id for t in day_3_tasks]
+
+    # Task for Day 6 MUST NOT be in Day 3 tasks!
+    assert task_d6.task_id not in day_3_ids
+    # Task for Day 3 and All Days MUST be in Day 3 tasks!
+    assert task_d3.task_id in day_3_ids
+    assert task_all.task_id in day_3_ids
+
 
 @pytest.mark.asyncio
 async def test_explicit_carry_over():

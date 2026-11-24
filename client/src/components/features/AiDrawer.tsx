@@ -60,7 +60,7 @@ export const AiDrawer: React.FC = () => {
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-40 bg-black/30 backdrop-blur-xs transition-opacity duration-300 ease-out ${
+        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-md transition-all duration-400 ease-out ${
           isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={handleAnimatedClose}

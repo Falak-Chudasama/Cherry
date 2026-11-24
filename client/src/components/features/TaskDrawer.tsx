@@ -115,7 +115,7 @@ export const TaskDrawer: React.FC = () => {
   const totalDays = isSurplus ? 3 : 7;
   const dayPills = Array.from({ length: totalDays }, (_, i) => i + 1);
 
-  // Mount/Unmount & smooth slide transition orchestration
+  // Mount/Unmount & smooth gradual 0.65 -> 1.0 transition orchestration
   useEffect(() => {
     if (isTaskDrawerOpen) {
       setShouldRender(true);
@@ -130,7 +130,7 @@ export const TaskDrawer: React.FC = () => {
       setIsVisible(false);
       const timer = setTimeout(() => {
         setShouldRender(false);
-      }, 320);
+      }, 500);
       return () => clearTimeout(timer);
     }
   }, [isTaskDrawerOpen]);
@@ -241,10 +241,9 @@ export const TaskDrawer: React.FC = () => {
       setPeriodType(taskDrawerData?.period_type || (pid.includes('SURPLUS') ? 'SURPLUS' : activePeriodType));
       const tDays = (pid.includes('SURPLUS') || activePeriodType === 'SURPLUS') ? 3 : 7;
 
-      // By default: current day of period is selected!
+      // By default: current day of period is selected
       setTaskDays([Math.min(todayDayNum, tDays)]);
 
-      // STRICT REQUIREMENT: No default subtasks! Start completely empty.
       setSubtasks(
         taskDrawerData?.subtasks && taskDrawerData.subtasks.length > 0
           ? taskDrawerData.subtasks.map((st: any, idx: number) => {
@@ -263,14 +262,14 @@ export const TaskDrawer: React.FC = () => {
     }
   }, [isTaskDrawerOpen, taskDrawerData, mode, existingTask, activeQuarterId, activePeriodType, todayStr]);
 
-  // Graceful animated close (slides smoothly left-to-right off-screen)
+  // Graceful animated close (slides right-to-left in reverse and scales 1.0 -> 0.65)
   const handleAnimatedClose = () => {
     if (!isVisible) return;
     playBack();
     setIsVisible(false);
     setTimeout(() => {
       closeTaskDrawer();
-    }, 280);
+    }, 480);
   };
 
   useEffect(() => {
@@ -363,11 +362,22 @@ export const TaskDrawer: React.FC = () => {
     setSubtasks(updated);
   };
 
+  // Requirement 12: Toggling subtasks automatically reconciles task status
   const handleToggleSubtaskCompletion = (index: number) => {
     playScroll();
     const updated = [...subtasks];
     updated[index].is_completed = !updated[index].is_completed;
     setSubtasks(updated);
+
+    const allDone = updated.length > 0 && updated.every((s) => s.is_completed);
+    const anyDone = updated.some((s) => s.is_completed);
+    if (allDone) {
+      setStatus('Done');
+    } else if (anyDone) {
+      setStatus('In progress');
+    } else {
+      setStatus('Not started');
+    }
   };
 
   // Subtask Day Range Selection: Click (single), Shift+click (range), Ctrl+click (multi)
@@ -491,8 +501,8 @@ export const TaskDrawer: React.FC = () => {
   };
 
   // Save / Update Task
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!title.trim()) {
       toast('error', 'Task title cannot be empty');
       return;
@@ -570,34 +580,32 @@ export const TaskDrawer: React.FC = () => {
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Requirement 11: Gradual frost/blur out of UI below the menu */}
       <div
-        className={`fixed inset-0 z-40 bg-black/30 backdrop-blur-xs transition-opacity duration-300 ease-out ${
+        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-md transition-all duration-400 ease-out ${
           isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={handleAnimatedClose}
       />
 
-      {/* Floating Rounded Modal Sheet with Apple-grade Smooth Slide Transitions */}
+      {/* Requirement 11 & Feedback 2: Gradual right-to-left slide AND size growing from 0.65 to 1.0 */}
       <aside
-        className={`fixed top-3 bottom-3 right-3 sm:top-4 sm:bottom-4 sm:right-4 z-50 w-[calc(100%-1.5rem)] sm:w-[460px] rounded-3xl bg-stone-50/95 dark:bg-[#151613]/95 backdrop-blur-xl border border-black/10 dark:border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform will-change-transform ${
+        className={`fixed top-3 bottom-3 right-3 sm:top-4 sm:bottom-4 sm:right-4 z-50 w-[calc(100%-1.5rem)] sm:w-[480px] rounded-3xl bg-white dark:bg-[#161714] border border-black/10 dark:border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] transform will-change-transform origin-right ${
           isVisible
-            ? 'translate-x-0 opacity-100 scale-100 pointer-events-auto'
-            : 'translate-x-[calc(100%+3rem)] opacity-0 scale-[0.98] pointer-events-none'
+            ? 'translate-x-0 scale-100 opacity-100 pointer-events-auto'
+            : 'translate-x-[calc(100%+3rem)] scale-[0.65] opacity-0 pointer-events-none'
         }`}
         role="dialog"
         aria-modal="true"
         aria-label={mode === 'edit' ? 'Edit Task' : 'New Task'}
       >
-        {/* Drawer Header */}
-        <div className="h-14 px-5 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between shrink-0 bg-white/40 dark:bg-black/20">
+        {/* Requirement 13: Translucent drawer header like main navbar */}
+        <div className="h-16 px-6 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between shrink-0 bg-white/80 dark:bg-[#161714]/80 backdrop-blur-xl">
           <div className="flex items-center gap-2.5 min-w-0">
-            <h2 className="font-display text-sm sm:text-base font-bold text-stone-900 dark:text-white truncate">
+            {/* Requirement 4: Removed "2026-11-Q4" pill */}
+            <h2 className="font-display text-base sm:text-lg font-bold text-stone-900 dark:text-white tracking-tight truncate">
               {mode === 'edit' ? 'Edit Task' : 'New Task'}
             </h2>
-            <span className="text-[11px] font-mono font-medium text-stone-500 dark:text-stone-400 px-2.5 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06] shrink-0">
-              {periodId}
-            </span>
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
@@ -605,7 +613,7 @@ export const TaskDrawer: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
-                className="p-1.5 rounded-full text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0 whitespace-nowrap"
+                className="p-2 rounded-full text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0 whitespace-nowrap"
                 title="Delete Task"
               >
                 <Trash2 className="h-4 w-4" />
@@ -614,7 +622,7 @@ export const TaskDrawer: React.FC = () => {
             <button
               type="button"
               onClick={handleAnimatedClose}
-              className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-800 transition shrink-0 whitespace-nowrap"
+              className="p-2 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition shrink-0 whitespace-nowrap"
               title="Close Drawer (Esc)"
             >
               <X className="h-4 w-4" />
@@ -622,11 +630,17 @@ export const TaskDrawer: React.FC = () => {
           </div>
         </div>
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4">
+        {/* Scrollable Form Body with generous bottom padding for floating button */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+          className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-5 pb-32"
+        >
           {/* 1. Task Title */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
               Task title
             </label>
             <input
@@ -635,25 +649,25 @@ export const TaskDrawer: React.FC = () => {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="What needs to be accomplished?"
-              className="w-full px-4 py-2.5 rounded-2xl bg-white dark:bg-stone-900/60 border border-black/[0.08] dark:border-white/[0.10] text-sm font-medium text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-cherry-500/40 transition shadow-2xs"
+              className="w-full px-4 py-3 rounded-2xl bg-stone-50 dark:bg-stone-900/80 border border-black/[0.08] dark:border-white/[0.10] text-sm font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-cherry-500/40 transition shadow-2xs"
             />
           </div>
 
           {/* 2. Execution Tier (Must Do, Should Do, Routine) */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
               Execution tier
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2.5">
               {(['Must Do', 'Should Do', 'Routine'] as const).map((t) => {
                 const isSelected = tier === t;
                 const Icon = t === 'Must Do' ? Flame : t === 'Should Do' ? Clock : Repeat;
                 const activeClasses =
                   t === 'Must Do'
-                    ? 'bg-rose-500 text-white font-medium shadow-xs'
+                    ? 'bg-rose-500 text-white font-semibold shadow-xs'
                     : t === 'Should Do'
-                    ? 'bg-orange-500 text-white font-medium shadow-xs'
-                    : 'bg-purple-600 text-white font-medium shadow-xs';
+                    ? 'bg-orange-500 text-white font-semibold shadow-xs'
+                    : 'bg-purple-600 text-white font-semibold shadow-xs';
 
                 const inactiveClasses =
                   t === 'Must Do'
@@ -670,11 +684,11 @@ export const TaskDrawer: React.FC = () => {
                       playScroll();
                       setTier(t);
                     }}
-                    className={`whitespace-nowrap flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs transition-colors duration-150 ${
+                    className={`whitespace-nowrap flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-2xl text-xs sm:text-sm transition-all duration-150 ${
                       isSelected ? activeClasses : inactiveClasses
                     }`}
                   >
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <Icon className="h-4 w-4 shrink-0" />
                     <span>{t}</span>
                   </button>
                 );
@@ -682,10 +696,10 @@ export const TaskDrawer: React.FC = () => {
             </div>
           </div>
 
-          {/* 3. Task Scheduled Day(s) (Tagging by Date, defaults to current day) */}
-          <div className="space-y-1.5">
+          {/* 3. Task Scheduled Day(s) - Feedback 1: Container perfectly fits buttons with circular ends */}
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 Scheduled day(s)
               </label>
               <button
@@ -698,12 +712,18 @@ export const TaskDrawer: React.FC = () => {
                     setTaskDays(Array.from({ length: totalDays }, (_, i) => i + 1));
                   }
                 }}
-                className="whitespace-nowrap text-[11px] font-medium text-cherry-flesh hover:underline"
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition shadow-2xs ${
+                  taskDays.length === totalDays
+                    ? 'bg-cherry-flesh text-white'
+                    : 'bg-stone-200/80 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-300 dark:hover:bg-stone-700 border border-black/[0.06] dark:border-white/[0.08]'
+                }`}
               >
                 {taskDays.length === totalDays ? 'Single day' : 'All days'}
               </button>
             </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
+
+            {/* Container perfectly fitting buttons with uniform padding and circular ends */}
+            <div className="inline-flex items-center gap-1.5 p-1.5 px-2 rounded-full bg-stone-100 dark:bg-stone-800/80 border border-black/[0.06] dark:border-white/[0.08] w-fit shadow-2xs">
               {dayPills.map((dayNum) => {
                 const isSelected = taskDays.includes(dayNum);
                 return (
@@ -711,10 +731,10 @@ export const TaskDrawer: React.FC = () => {
                     key={dayNum}
                     type="button"
                     onClick={(e) => handleTaskDayClick(dayNum, e)}
-                    className={`h-7 min-w-[34px] px-2 rounded-xl text-xs font-mono font-semibold whitespace-nowrap transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-90 select-none ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center font-mono text-xs font-bold whitespace-nowrap transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-90 select-none ${
                       isSelected
-                        ? 'bg-cherry-flesh text-white shadow-xs scale-100'
-                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                        ? 'bg-cherry-flesh text-white shadow-xs'
+                        : 'bg-white dark:bg-stone-900 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 shadow-2xs border border-black/[0.04] dark:border-white/[0.06]'
                     }`}
                     title={`Tag Day ${dayNum} for this task`}
                   >
@@ -725,20 +745,24 @@ export const TaskDrawer: React.FC = () => {
             </div>
           </div>
 
-          {/* 4. Fluid Sliding Status Segmented Control */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+          {/* 4. Fluid Sliding Status Segmented Control - Feedback 1: Rich, non-subtle distinct colors */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
               Status
             </label>
             <div
               ref={statusContainerRef}
-              className="relative flex items-center p-1 rounded-2xl bg-transparent border border-black/[0.06] dark:border-white/[0.08]"
+              className="relative flex items-center p-1 rounded-2xl bg-stone-100 dark:bg-stone-800/80 border border-black/[0.06] dark:border-white/[0.08]"
             >
-              {/* Dynamic Sliding Active Indicator Pill */}
+              {/* Dynamic Sliding Active Indicator Pill with rich distinct colors */}
               <div
-                className={`absolute top-0 left-0 rounded-xl bg-stone-900 dark:bg-stone-100 shadow-xs pointer-events-none ${
-                  isStatusReady ? 'transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]' : ''
-                }`}
+                className={`absolute top-0 left-0 rounded-xl pointer-events-none shadow-sm ${
+                  status === 'Done'
+                    ? 'bg-emerald-600 dark:bg-emerald-500'
+                    : status === 'In progress'
+                    ? 'bg-sky-600 dark:bg-sky-500'
+                    : 'bg-stone-900 dark:bg-stone-100'
+                } ${isStatusReady ? 'transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]' : ''}`}
                 style={{
                   transform: `translate3d(${statusPillStyle.left}px, ${statusPillStyle.top}px, 0)`,
                   width: `${statusPillStyle.width}px`,
@@ -752,6 +776,11 @@ export const TaskDrawer: React.FC = () => {
               {STATUS_OPTIONS.map((opt) => {
                 const isSelected = status === opt.id;
                 const Icon = opt.icon;
+                const activeColor =
+                  opt.id === 'Not started'
+                    ? 'text-white dark:text-stone-900'
+                    : 'text-white';
+
                 return (
                   <button
                     key={opt.id}
@@ -763,13 +792,17 @@ export const TaskDrawer: React.FC = () => {
                       playScroll();
                       setStatus(opt.id);
                     }}
-                    className={`relative z-10 flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors duration-200 text-center flex items-center justify-center gap-1.5 select-none ${
+                    className={`relative z-10 flex-1 py-2 px-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-colors duration-200 text-center flex items-center justify-center gap-1.5 select-none ${
                       isSelected
-                        ? 'text-white dark:text-stone-900'
-                        : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100'
+                        ? activeColor
+                        : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 font-semibold'
                     }`}
                   >
-                    <Icon className={`w-3.5 h-3.5 shrink-0 ${opt.id === 'In progress' ? 'w-3 h-3 fill-current' : ''}`} />
+                    <Icon
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        opt.id === 'In progress' ? 'w-3 h-3 fill-current' : ''
+                      }`}
+                    />
                     <span>{opt.label}</span>
                   </button>
                 );
@@ -778,24 +811,24 @@ export const TaskDrawer: React.FC = () => {
           </div>
 
           {/* 5. Notes & Acceptance Criteria */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
               Notes & criteria (optional)
             </label>
             <textarea
-              rows={2}
+              rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add details, links, or context..."
-              className="w-full px-4 py-2.5 rounded-2xl bg-white dark:bg-stone-900/60 border border-black/[0.08] dark:border-white/[0.10] text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-cherry-500/40 resize-none transition shadow-2xs"
+              className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-stone-900/80 border border-black/[0.08] dark:border-white/[0.10] text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-cherry-500/40 resize-none transition shadow-2xs"
             />
           </div>
 
-          {/* 6. Subtasks & Schedule Checklist */}
-          <div className="space-y-2.5 pt-2 border-t border-black/[0.05] dark:border-white/[0.08]">
+          {/* 6. Subtasks Checklist */}
+          <div className="space-y-3 pt-3 border-t border-black/[0.05] dark:border-white/[0.08]">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <h4 className="text-xs font-semibold text-stone-800 dark:text-stone-200 truncate">
+                <h4 className="text-xs font-bold text-stone-800 dark:text-stone-200 uppercase tracking-wider truncate">
                   Subtasks {subtasks.length > 0 && `(${subtasks.length})`}
                 </h4>
                 <p className="text-[11px] text-stone-400 truncate">
@@ -806,7 +839,7 @@ export const TaskDrawer: React.FC = () => {
               <button
                 type="button"
                 onClick={handleAddSubtask}
-                className="whitespace-nowrap shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold text-cherry-flesh hover:bg-cherry-500/10 transition"
+                className="whitespace-nowrap shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold text-cherry-flesh hover:bg-cherry-500/10 transition border border-cherry-500/20"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Add subtask</span>
@@ -827,23 +860,21 @@ export const TaskDrawer: React.FC = () => {
                   return (
                     <div
                       key={st.id || idx}
-                      className="p-3 rounded-2xl bg-white dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] space-y-2 shadow-2xs transition"
+                      className="p-3.5 rounded-2xl bg-white dark:bg-stone-900/80 border border-black/[0.06] dark:border-white/[0.08] space-y-2 shadow-2xs transition"
                     >
-                      {/* Subtask Row: Checkbox, Title Input, Day Badge, Trash */}
                       <div className="flex items-center gap-2">
-                        {mode === 'edit' && (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleSubtaskCompletion(idx)}
-                            className="whitespace-nowrap text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition shrink-0"
-                          >
-                            {isDone ? (
-                              <CheckSquare className="h-4 w-4 text-emerald-500" />
-                            ) : (
-                              <Square className="h-4 w-4" />
-                            )}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSubtaskCompletion(idx)}
+                          className="whitespace-nowrap text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition shrink-0"
+                          title="Toggle subtask completion"
+                        >
+                          {isDone ? (
+                            <CheckSquare className="h-4 w-4 text-emerald-500" />
+                          ) : (
+                            <Square className="h-4 w-4" />
+                          )}
+                        </button>
 
                         <input
                           type="text"
@@ -855,7 +886,7 @@ export const TaskDrawer: React.FC = () => {
                           }`}
                         />
 
-                        {/* Day Range Pill Button (Click to toggle day picker) */}
+                        {/* Day Range Pill Button */}
                         <button
                           type="button"
                           onClick={() => {
@@ -888,10 +919,10 @@ export const TaskDrawer: React.FC = () => {
                         </button>
                       </div>
 
-                      {/* Inline Day Selector (Clean D1..D7 buttons, NO noisy text) */}
+                      {/* Inline Day Selector */}
                       {isDayPickerOpen && (
                         <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.05] animate-scale-in">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="p-2 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] flex items-center gap-1.5 flex-wrap">
                             {dayPills.map((dayNum) => {
                               const isSelected = currentDays.includes(dayNum);
                               return (
@@ -899,10 +930,10 @@ export const TaskDrawer: React.FC = () => {
                                   key={dayNum}
                                   type="button"
                                   onClick={(e) => handleDayPillClick(idx, dayNum, e)}
-                                  className={`h-7 min-w-[32px] px-2 rounded-xl text-xs font-mono font-semibold whitespace-nowrap transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-90 select-none ${
+                                  className={`w-7 h-7 rounded-full flex items-center justify-center font-mono text-xs font-semibold whitespace-nowrap transition-all duration-200 active:scale-90 select-none ${
                                     isSelected
-                                      ? 'bg-cherry-flesh text-white shadow-xs scale-100'
-                                      : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                                      ? 'bg-cherry-flesh text-white shadow-xs'
+                                      : 'bg-white dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700 border border-black/[0.05]'
                                   }`}
                                 >
                                   D{dayNum}
@@ -920,7 +951,7 @@ export const TaskDrawer: React.FC = () => {
           </div>
 
           {/* 7. AI Assistant Helper */}
-          <div className="pt-2 border-t border-black/[0.05] dark:border-white/[0.08] space-y-2">
+          <div className="pt-3 border-t border-black/[0.05] dark:border-white/[0.08] space-y-2">
             {!showAiRefine ? (
               <button
                 type="button"
@@ -928,23 +959,23 @@ export const TaskDrawer: React.FC = () => {
                   playScroll();
                   setShowAiRefine(true);
                 }}
-                className="whitespace-nowrap flex items-center gap-1.5 text-xs text-stone-500 hover:text-cherry-flesh dark:hover:text-cherry-blush transition py-1"
+                className="whitespace-nowrap flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-cherry-flesh dark:hover:text-cherry-blush transition py-1"
               >
                 <Sparkles className="h-3.5 w-3.5 text-cherry-flesh shrink-0" />
                 <span>Need help breaking this down? Ask AI</span>
               </button>
             ) : (
-              <div className="p-3 rounded-2xl bg-white dark:bg-stone-900/60 border border-cherry-500/20 space-y-2 animate-scale-in">
+              <div className="p-3.5 rounded-2xl bg-white dark:bg-stone-900/80 border border-cherry-500/20 space-y-2.5 animate-scale-in">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-stone-600 dark:text-stone-300 flex items-center gap-1.5">
-                    <Sparkles className="h-3 w-3 text-cherry-flesh shrink-0" />
+                  <span className="text-xs font-semibold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-cherry-flesh shrink-0" />
                     <span>AI Subtask Generator</span>
                   </span>
                   {previousDraft && (
                     <button
                       type="button"
                       onClick={handleUndoAi}
-                      className="whitespace-nowrap text-[11px] text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
+                      className="whitespace-nowrap text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
                     >
                       <Undo2 className="h-3 w-3" />
                       <span>Undo</span>
@@ -965,13 +996,13 @@ export const TaskDrawer: React.FC = () => {
                     }}
                     placeholder="e.g. Split into research, draft, review..."
                     disabled={isAiGenerating}
-                    className="flex-1 px-3 py-1.5 rounded-xl bg-stone-100 dark:bg-stone-800 text-xs focus:outline-none"
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-stone-100 dark:bg-stone-800 text-xs focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={handleAiRefine}
                     disabled={!aiPrompt.trim() || isAiGenerating}
-                    className="whitespace-nowrap px-3 py-1.5 rounded-xl bg-cherry-flesh hover:bg-cherry-700 text-white font-semibold text-xs disabled:opacity-40 transition shrink-0"
+                    className="whitespace-nowrap px-4 py-2 rounded-xl bg-cherry-flesh hover:bg-cherry-700 text-white font-semibold text-xs disabled:opacity-40 transition shrink-0"
                   >
                     {isAiGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Generate'}
                   </button>
@@ -981,61 +1012,53 @@ export const TaskDrawer: React.FC = () => {
           </div>
         </form>
 
-        {/* Drawer Action Footer */}
-        <div className="p-4 border-t border-black/[0.06] dark:border-white/[0.08] bg-white/60 dark:bg-black/30 backdrop-blur-md flex items-center justify-between gap-3 shrink-0">
-          {mode === 'edit' ? (
-            showDeleteConfirm ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-rose-600 dark:text-rose-400 whitespace-nowrap">
-                  Delete task?
-                </span>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={isSubmitting}
-                  className="whitespace-nowrap px-3 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition shrink-0"
-                >
-                  Yes, Delete
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="whitespace-nowrap text-stone-400 text-xs hover:underline px-1 shrink-0"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
+        {/* Delete Confirmation Overlay inside Drawer */}
+        {showDeleteConfirm && (
+          <div className="absolute inset-x-4 bottom-20 p-4 rounded-2xl bg-white dark:bg-stone-900 border border-rose-500/30 shadow-2xl z-30 flex items-center justify-between gap-3 animate-scale-in">
+            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+              Delete this task permanently?
+            </span>
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowDeleteConfirm(true)}
-                className="whitespace-nowrap inline-flex items-center gap-1.5 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 px-3 py-1.5 rounded-full text-xs font-semibold transition shrink-0"
+                onClick={handleDelete}
+                disabled={isSubmitting}
+                className="px-3.5 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span>Delete Task</span>
+                Yes, Delete
               </button>
-            )
-          ) : (
-            <div />
-          )}
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleAnimatedClose}
-              className="whitespace-nowrap px-4 py-2 rounded-full text-xs font-medium text-stone-600 dark:text-stone-400 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSubmitting || !title.trim()}
-              className="whitespace-nowrap px-5 py-2 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs font-semibold shadow-xs transition hover:scale-[1.02] disabled:opacity-40"
-            >
-              {isSubmitting ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Create Task'}
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 text-xs px-2"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
+        )}
+
+        {/* Floating Accent Colored Create Task Button - Solid, Right-aligned, Compact */}
+        <div className="absolute inset-x-0 bottom-0 p-5 pointer-events-none z-20 flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              if (!title.trim()) {
+                toast('error', 'Please enter a task title');
+                return;
+              }
+              handleSave();
+            }}
+            disabled={isSubmitting}
+            className="pointer-events-auto px-6 py-2.5 rounded-full bg-[#FF5252] hover:bg-[#E03E3E] active:bg-[#CB2328] text-white font-bold text-xs sm:text-sm shadow-md transition-all duration-150 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 select-none"
+            style={{ opacity: 1 }}
+          >
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin text-white" />
+            ) : (
+              <span>{mode === 'edit' ? 'Save Changes' : 'Create Task'}</span>
+            )}
+          </button>
         </div>
       </aside>
     </>

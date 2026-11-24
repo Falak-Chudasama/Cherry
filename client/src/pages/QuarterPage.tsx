@@ -33,6 +33,8 @@ export const QuarterPage: React.FC = () => {
     isAiDrawerOpen,
     workspaceRevision,
     bumpWorkspaceRevision,
+    cachedPeriodTasks,
+    setCachedPeriodTasks,
   } = useEcosystem();
 
   const [searchParams] = useSearchParams();
@@ -61,6 +63,9 @@ export const QuarterPage: React.FC = () => {
         label: isSurplus ? 'Surplus Period' : `Quarter ${quarterNum}`,
         dateRange: 'Active Period',
         days: Array.from({ length: totalDays }, (_, i) => ({ dayNum: i + 1, dateLabel: `D${i + 1}` })),
+        startDay: 1,
+        monthStr: 'Nov',
+        year: 2026,
       };
     }
     const year = parseInt(match[1], 10);
@@ -107,12 +112,12 @@ export const QuarterPage: React.FC = () => {
       dateLabel: `D${i + 1}`,
     }));
 
-    return { label, dateRange, days };
+    return { label, dateRange, days, startDay, monthStr, year };
   }, [currentPeriodId, isSurplus, quarterNum, totalDays]);
 
   const { push: toast } = useToast();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tasks, setTasks] = useState<Task[]>(() => cachedPeriodTasks || []);
+  const [loading, setLoading] = useState(() => !cachedPeriodTasks || cachedPeriodTasks.length === 0);
   const [selectedDayFilter, setSelectedDayFilter] = useState<number | 'ALL'>('ALL');
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
 
@@ -187,11 +192,13 @@ export const QuarterPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedDayFilter, periodMeta.days, isTaskDrawerOpen, isAiDrawerOpen]);
 
-  const loadPeriodTasks = async () => {
+  const loadPeriodTasks = async (showLoadingSpinner = false) => {
     try {
-      setLoading(true);
+      if (showLoadingSpinner) setLoading(true);
       const data = await api.getPeriodTasks(currentPeriodId);
-      setTasks(data || []);
+      const fetched = data || [];
+      setTasks(fetched);
+      setCachedPeriodTasks(fetched);
     } catch (err) {
       console.debug('Failed to load period tasks', err);
     } finally {
@@ -200,7 +207,8 @@ export const QuarterPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadPeriodTasks();
+    const hasCached = cachedPeriodTasks && cachedPeriodTasks.length > 0;
+    loadPeriodTasks(!hasCached);
   }, [currentPeriodId, workspaceRevision]);
 
   // Drag and Drop handlers
@@ -229,6 +237,9 @@ export const QuarterPage: React.FC = () => {
     setTasks((prev) =>
       prev.map((t) => (t.task_id === taskId ? { ...t, status: targetStatus } : t))
     );
+    setCachedPeriodTasks((prev) =>
+      prev.map((t) => (t.task_id === taskId ? { ...t, status: targetStatus } : t))
+    );
 
     try {
       await api.updateTaskStatus(taskId, targetStatus);
@@ -253,6 +264,7 @@ export const QuarterPage: React.FC = () => {
     try {
       const updated = await api.toggleSubtask(taskId, subtaskId, !currentVal);
       setTasks((prev) => prev.map((t) => (t.task_id === taskId ? updated : t)));
+      setCachedPeriodTasks((prev) => prev.map((t) => (t.task_id === taskId ? updated : t)));
       playNotification();
       bumpWorkspaceRevision();
     } catch {
@@ -261,12 +273,13 @@ export const QuarterPage: React.FC = () => {
     }
   };
 
-  // Delete task directly from card
+  // Delete task directly in card
   const handleDeleteTask = async (taskId: string, taskTitle: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       await api.deleteTask(taskId);
       setTasks((prev) => prev.filter((t) => t.task_id !== taskId));
+      setCachedPeriodTasks((prev) => prev.filter((t) => t.task_id !== taskId));
       playNotification();
       toast('info', `Deleted "${taskTitle}"`);
       bumpWorkspaceRevision();
@@ -276,30 +289,34 @@ export const QuarterPage: React.FC = () => {
     }
   };
 
-  // Day filtering logic: When ALL is selected, show ALL tasks of this quarter!
-  // When a specific day D_k is selected, show tasks tagged for D_k (task-level or subtask-level)
+  // Filter tasks by Day (ALL or specific day D_k)
   const filteredTasks = useMemo(() => {
     if (selectedDayFilter === 'ALL') return tasks;
-    return tasks.filter((t) => {
-      // 1. Check task-level scheduled days
-      const days =
-        t.scheduled_days ||
-        (t.start_day !== undefined && t.end_day !== undefined
-          ? Array.from({ length: t.end_day - t.start_day + 1 }, (_, i) => t.start_day! + i)
-          : null);
-      if (days && days.includes(selectedDayFilter)) return true;
 
+    const dayNum = Number(selectedDayFilter);
+    return tasks.filter((t) => {
+      // 1. Check task-level days
+      if (t.scheduled_days && t.scheduled_days.length > 0) {
+        return t.scheduled_days.includes(dayNum);
+      }
+      if (t.start_day !== undefined && t.end_day !== undefined) {
+        if (dayNum >= t.start_day && dayNum <= t.end_day) return true;
+      }
       // 2. Check subtasks
       if (t.subtasks && t.subtasks.length > 0) {
         return t.subtasks.some((st) => {
-          const start = st.start_day ?? 1;
-          const end = st.end_day ?? totalDays;
-          return selectedDayFilter >= start && selectedDayFilter <= end;
+          if (st.selected_days && st.selected_days.length > 0) {
+            return st.selected_days.includes(dayNum);
+          }
+          if (st.start_day !== undefined && st.end_day !== undefined) {
+            return dayNum >= st.start_day && dayNum <= st.end_day;
+          }
+          return false;
         });
       }
       return false;
     });
-  }, [tasks, selectedDayFilter, totalDays]);
+  }, [tasks, selectedDayFilter]);
 
   const completedCount = useMemo(() => {
     return tasks.filter((t) => t.status === 'Done').length;
@@ -310,11 +327,21 @@ export const QuarterPage: React.FC = () => {
     return Math.round((completedCount / tasks.length) * 100);
   }, [tasks, completedCount]);
 
+  // Requirement 7: Focus on text "Nov 22 – Nov 28", and when switching to e.g. Day 2, show "Nov 23"
+  const activeDateDisplay = useMemo(() => {
+    if (selectedDayFilter === 'ALL') {
+      return periodMeta.dateRange;
+    }
+    const dayNum = Number(selectedDayFilter);
+    const targetDay = periodMeta.startDay + dayNum - 1;
+    return `${periodMeta.monthStr} ${targetDay}`;
+  }, [selectedDayFilter, periodMeta]);
+
   const getTierBadge = (tier?: TaskTier | string) => {
     const norm = (tier || '').toLowerCase();
     if (norm.includes('must')) {
       return (
-        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 shrink-0">
           <Flame className="h-3 w-3 text-rose-500" />
           <span>Must Do</span>
         </span>
@@ -322,14 +349,14 @@ export const QuarterPage: React.FC = () => {
     }
     if (norm.includes('should')) {
       return (
-        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 shrink-0">
           <Clock className="h-3 w-3 text-orange-500" />
           <span>Should Do</span>
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+      <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0">
         <Repeat className="h-3 w-3 text-purple-500" />
         <span>Routine</span>
       </span>
@@ -345,39 +372,37 @@ export const QuarterPage: React.FC = () => {
     if (!days || days.length === 0) return null;
     const tDays = isSurplus ? 3 : 7;
     const label =
-      days.length === tDays
+      days.length >= tDays
         ? 'All Days'
         : days.length === 1
-        ? `D${days[0]}`
+        ? `Day ${days[0]}`
         : `D${days[0]}–${days[days.length - 1]}`;
 
     return (
-      <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-200/60 dark:border-stone-700/60 shrink-0">
+      <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-200/60 dark:border-stone-700/60 shrink-0 whitespace-nowrap">
         {label}
       </span>
     );
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8 space-y-6">
-      {/* Quarter Header */}
-      <div className="glass-panel rounded-3xl p-5 sm:p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-soft space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8 space-y-6">
+      {/* Quarter Header - 0.65 of original size, aligned on the left (Feedback 3) */}
+      <div className="w-full lg:w-[65%] glass-panel rounded-3xl p-5 sm:p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-soft space-y-4">
+        <div className="flex items-center justify-between gap-3">
           <div>
+            {/* Requirement 7: Display focused date (Nov 22 – Nov 28 or Nov 23 on Day 2), removed 2026-11-Q4 */}
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900">
-                {periodMeta.dateRange}
-              </span>
-              <span className="text-xs font-mono text-stone-400">
-                {currentPeriodId}
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-2xs">
+                {activeDateDisplay}
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-stone-900 dark:text-white">
+            <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-stone-900 dark:text-white">
               {periodMeta.label} Kanban
             </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -388,7 +413,7 @@ export const QuarterPage: React.FC = () => {
                   mode: 'create',
                 });
               }}
-              className="focus-ring flex items-center gap-1.5 px-4 py-2 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition hover:scale-[1.02]"
+              className="focus-ring flex items-center gap-1.5 px-4 py-2 rounded-full bg-cherry-flesh hover:bg-cherry-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition hover:scale-[1.02] active:scale-95"
             >
               <Plus className="h-4 w-4" />
               <span>New Task</span>
@@ -402,7 +427,7 @@ export const QuarterPage: React.FC = () => {
                   period_type: currentPeriodType,
                 });
               }}
-              className="focus-ring flex items-center gap-1.5 px-3.5 py-2 rounded-full glass-card text-stone-700 dark:text-stone-300 text-xs sm:text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5 transition"
+              className="focus-ring flex items-center gap-1.5 px-3.5 py-2 rounded-full glass-card text-stone-700 dark:text-stone-300 text-xs sm:text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5 transition active:scale-95"
             >
               <Sparkles className="h-4 w-4 text-cherry-flesh dark:text-cherry-blush" />
               <span>AI Plan</span>
@@ -431,7 +456,7 @@ export const QuarterPage: React.FC = () => {
       <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
         <div
           ref={dayFilterContainerRef}
-          className="relative flex items-center gap-1 p-1 rounded-full bg-transparent border border-black/[0.06] dark:border-white/[0.08]"
+          className="relative flex items-center gap-1 p-1.5 rounded-full bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08]"
         >
           {/* Dynamic Sliding Active Indicator Pill */}
           <div
@@ -457,7 +482,7 @@ export const QuarterPage: React.FC = () => {
               playScroll();
               setSelectedDayFilter('ALL');
             }}
-            className={`relative z-10 px-3 py-1 rounded-full text-xs font-semibold transition-colors duration-200 ${
+            className={`relative z-10 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors duration-200 select-none ${
               selectedDayFilter === 'ALL'
                 ? 'text-white dark:text-stone-900'
                 : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
@@ -465,26 +490,27 @@ export const QuarterPage: React.FC = () => {
           >
             All Days
           </button>
-          {periodMeta.days.map(({ dayNum, dateLabel }) => {
-            const isSelected = selectedDayFilter === dayNum;
+
+          {periodMeta.days.map((d) => {
+            const isSelected = selectedDayFilter === d.dayNum;
             return (
               <button
-                key={dayNum}
+                key={d.dayNum}
                 type="button"
                 ref={(el) => {
-                  dayFilterItemRefs.current[String(dayNum)] = el;
+                  dayFilterItemRefs.current[String(d.dayNum)] = el;
                 }}
                 onClick={() => {
                   playScroll();
-                  setSelectedDayFilter(dayNum);
+                  setSelectedDayFilter(d.dayNum);
                 }}
-                className={`relative z-10 px-3 py-1 rounded-full text-xs font-semibold transition-colors duration-200 ${
+                className={`relative z-10 px-3 py-1.5 rounded-full text-xs font-semibold font-mono transition-colors duration-200 select-none ${
                   isSelected
                     ? 'text-white dark:text-stone-900'
                     : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
                 }`}
               >
-                {dateLabel}
+                {d.dateLabel}
               </button>
             );
           })}
@@ -495,13 +521,13 @@ export const QuarterPage: React.FC = () => {
         </span>
       </div>
 
-      {/* 3-Column Kanban Board */}
+      {/* Kanban Board Columns - Requirement 6: Handled overflow, zero unnecessary scrollbars, no UI clipping */}
       {loading ? (
-        <div className="flex min-h-[30vh] items-center justify-center">
+        <div className="flex min-h-[35vh] items-center justify-center">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-stone-300 dark:border-stone-700 border-t-cherry-flesh" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
           {KANBAN_COLUMNS.map((col) => {
             const colTasks = filteredTasks.filter((t) => t.status === col.status);
             return (
@@ -509,29 +535,29 @@ export const QuarterPage: React.FC = () => {
                 key={col.status}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, col.status)}
-                className="flex flex-col rounded-3xl glass-panel border border-black/[0.06] dark:border-white/[0.08] p-4 min-h-[500px] shadow-soft space-y-3"
+                className="flex flex-col rounded-3xl glass-panel border border-black/[0.06] dark:border-white/[0.08] p-4 min-h-[500px] shadow-soft space-y-3 min-w-0 overflow-hidden"
               >
                 {/* Column Header */}
                 <div className="flex items-center justify-between pb-2 border-b border-black/[0.04] dark:border-white/[0.06]">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     {col.status === 'Done' ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                     ) : col.status === 'In progress' ? (
-                      <Clock className="h-4 w-4 text-blue-500" />
+                      <Clock className="h-4 w-4 text-sky-500 shrink-0" />
                     ) : (
-                      <Circle className="h-4 w-4 text-stone-400" />
+                      <Circle className="h-4 w-4 text-stone-400 shrink-0" />
                     )}
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300 truncate">
                       {col.label}
                     </h3>
                   </div>
-                  <span className="font-mono text-2xs px-2 py-0.5 rounded-full bg-black/[0.03] dark:bg-white/[0.05] text-stone-500 font-bold">
+                  <span className="font-mono text-2xs px-2 py-0.5 rounded-full bg-black/[0.03] dark:bg-white/[0.05] text-stone-500 font-bold shrink-0">
                     {colTasks.length}
                   </span>
                 </div>
 
-                {/* Column Task Cards */}
-                <div className="flex-1 space-y-2.5 overflow-y-auto pr-0.5">
+                {/* Column Task Cards: overflow-y-auto, overflow-x-hidden to prevent parent horizontal scrollbar */}
+                <div className="flex-1 space-y-2.5 overflow-y-auto overflow-x-hidden pr-0.5">
                   {colTasks.length === 0 ? (
                     <div className="h-28 flex items-center justify-center border border-dashed border-black/10 dark:border-white/10 rounded-2xl text-stone-400 text-xs">
                       Drop tasks here
@@ -548,17 +574,17 @@ export const QuarterPage: React.FC = () => {
                           draggable
                           onDragStart={(e) => handleDragStart(e, task.task_id)}
                           onClick={() => openTaskDrawer({ task, mode: 'edit' })}
-                          className={`glass-card rounded-2xl p-3.5 border transition-all cursor-pointer group shadow-2xs hover:border-black/20 dark:hover:border-white/20 hover:scale-[1.01] ${
+                          className={`glass-card rounded-2xl p-4 border transition-all duration-200 cursor-pointer group shadow-2xs hover:shadow-md hover:border-black/20 dark:hover:border-white/20 select-none overflow-hidden ${
                             isDone
                               ? 'border-black/[0.04] dark:border-white/[0.05] opacity-75'
                               : 'border-black/[0.07] dark:border-white/[0.09]'
                           }`}
                         >
                           <div className="space-y-2">
-                            {/* Card Top: Tier Badge & Title */}
+                            {/* Card Top: Title on top, Trash button right */}
                             <div className="flex items-start justify-between gap-2">
                               <h4
-                                className={`text-xs font-semibold leading-snug flex-1 ${
+                                className={`text-xs font-semibold leading-snug break-words min-w-0 flex-1 ${
                                   isDone
                                     ? 'line-through text-stone-400 dark:text-stone-500'
                                     : 'text-stone-900 dark:text-white'
@@ -566,18 +592,20 @@ export const QuarterPage: React.FC = () => {
                               >
                                 {task.title}
                               </h4>
-                              <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleDeleteTask(task.task_id, task.title, e)}
-                                  title="Delete task"
-                                  className="p-1 rounded-md text-stone-300 dark:text-stone-600 hover:text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition shrink-0"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                                {getTierBadge(task.tier)}
-                                {getTaskDaysBadge(task)}
-                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteTask(task.task_id, task.title, e)}
+                                title="Delete task"
+                                className="p-1 rounded-md text-stone-300 dark:text-stone-600 hover:text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition shrink-0"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Badges in their own row: prevents ss3 clipping bug */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {getTierBadge(task.tier)}
+                              {getTaskDaysBadge(task)}
                             </div>
 
                             {task.description && (
@@ -606,9 +634,9 @@ export const QuarterPage: React.FC = () => {
                                         e
                                       )
                                     }
-                                    className="flex items-center justify-between p-1 rounded hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition text-2xs select-none"
+                                    className="flex items-center justify-between p-1 rounded hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition text-2xs select-none gap-2 min-w-0"
                                   >
-                                    <div className="flex items-center gap-1.5 min-w-0">
+                                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                       {st.is_completed ? (
                                         <CheckSquare className="h-3 w-3 text-emerald-500 shrink-0" />
                                       ) : (

@@ -151,15 +151,16 @@ class TaskService:
         return [TaskModel(**doc) async for doc in cursor]
 
     async def get_tasks_for_day(self, date_str: str) -> List[TaskModel]:
-        # 1. Exact target_date matches
-        # 2. Tagged day in the active period matches (task-level or subtask-level)
+        # Return tasks that are either explicitly of that day (day_in_period) or of all days.
         try:
             d = cal.parse_date(date_str)
             period_type, period_id = cal.get_period_for_day(d)
             day_in_period = cal.get_day_number_in_period(d)
+            total_days_in_period = 3 if (period_type == "SURPLUS" or "SURPLUS" in (period_id or "")) else 7
         except Exception:
             period_id = None
             day_in_period = None
+            total_days_in_period = 7
 
         query: Dict[str, Any] = {"$or": [{"target_date": date_str}]}
 
@@ -170,33 +171,50 @@ class TaskService:
                     {"quarter_id": period_id},
                 ]
             }
-            day_condition = {
-                "$or": [
-                    {"scheduled_days": day_in_period},
-                    {
-                        "start_day": {"$lte": day_in_period},
-                        "end_day": {"$gte": day_in_period},
-                    },
-                    {
-                        "subtasks": {
-                            "$elemMatch": {
-                                "start_day": {"$lte": day_in_period},
-                                "end_day": {"$gte": day_in_period},
-                            }
-                        }
-                    },
-                ]
-            }
-            query["$or"].append({"$and": [period_condition, day_condition]})
+            query["$or"].append(period_condition)
 
         cursor = self.db.tasks.find(query).sort("created_at", 1)
         tasks = []
         seen = set()
         async for doc in cursor:
             t = TaskModel(**doc)
-            if t.task_id not in seen:
-                seen.add(t.task_id)
-                tasks.append(t)
+            if t.task_id in seen:
+                continue
+
+            # Requirement 1: Only tasks that are either of that day or of all days
+            if day_in_period is not None:
+                days = t.scheduled_days
+                if days is None or len(days) == 0:
+                    if t.start_day is not None and t.end_day is not None:
+                        days = list(range(t.start_day, t.end_day + 1))
+
+                if days is not None and len(days) > 0:
+                    is_all_days = len(days) >= total_days_in_period or (
+                        t.start_day is not None
+                        and t.end_day is not None
+                        and t.start_day <= 1
+                        and t.end_day >= total_days_in_period
+                    )
+                    is_that_day = day_in_period in days
+                    if not (is_all_days or is_that_day):
+                        # Task is scheduled for other day(s), so skip for today
+                        continue
+                else:
+                    # Untagged by day: check subtasks or target_date
+                    subtask_days = []
+                    for st in t.subtasks:
+                        if st.start_day is not None and st.end_day is not None:
+                            subtask_days.extend(range(st.start_day, st.end_day + 1))
+                    if subtask_days:
+                        is_all = len(set(subtask_days)) >= total_days_in_period
+                        is_that = day_in_period in subtask_days
+                        if not (is_all or is_that):
+                            continue
+                    elif t.target_date and t.target_date != date_str:
+                        continue
+
+            seen.add(t.task_id)
+            tasks.append(t)
         return tasks
 
     async def update_task_status(self, task_id: str, new_status: KanbanStatus) -> Optional[TaskModel]:
@@ -222,20 +240,24 @@ class TaskService:
             return None
 
         task = TaskModel(**task_doc)
-        all_done = True
         for st in task.subtasks:
             if st.subtask_id == subtask_id:
                 st.is_completed = is_completed
                 st.completed_at = datetime.utcnow() if is_completed else None
-            if not st.is_completed:
-                all_done = False
+
+        any_done = any(st.is_completed for st in task.subtasks)
+        all_done = all(st.is_completed for st in task.subtasks) if task.subtasks else False
 
         if all_done and task.subtasks:
             task.status = "Done"
             task.completed_at = datetime.utcnow()
-        elif task.status == "Done" and not all_done:
+        elif any_done:
             task.status = "In progress"
             task.completed_at = None
+        else:
+            if task.subtasks:
+                task.status = "Not started"
+                task.completed_at = None
 
         task.updated_at = datetime.utcnow()
         await self.db.tasks.replace_one({"task_id": task_id}, task.model_dump())

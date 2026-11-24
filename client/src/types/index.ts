@@ -26,6 +26,7 @@ export interface Subtask {
   start_day?: number;
   end_day?: number;
   scheduled_days?: number[];
+  selected_days?: number[];
   completed_at?: string;
 }
 

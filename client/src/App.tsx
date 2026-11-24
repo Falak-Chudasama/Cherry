@@ -34,7 +34,7 @@ function MainAppLayout() {
   });
 
   return (
-    <div className="relative min-h-screen bg-[#F8F9F5] dark:bg-[#121310] text-stone-900 dark:text-stone-100 font-sans transition-colors duration-200 overflow-x-hidden">
+    <div className="relative min-h-screen bg-[#FAF6F6] dark:bg-[#141212] text-stone-900 dark:text-stone-100 font-sans transition-colors duration-200 overflow-x-hidden">
       {/* Ambient light fields to enable subtle glass refraction matching Cherry palette */}
       <div className="pointer-events-none fixed top-10 -left-32 h-[520px] w-[520px] rounded-full bg-gradient-to-br from-cherry-500/[0.06] to-transparent blur-[120px] dark:from-cherry-flesh/[0.08]" />
       <div className="pointer-events-none fixed top-1/3 -right-32 h-[500px] w-[500px] rounded-full bg-gradient-to-bl from-cherry-leaf/[0.05] to-transparent blur-[120px] dark:from-cherry-leaf/[0.06]" />
