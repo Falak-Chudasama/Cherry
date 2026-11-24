@@ -12,48 +12,48 @@
 
   <p align="center">
     <a href="#why-cherry"><img src="https://img.shields.io/badge/Local--First-100%25%20Offline-22c55e?style=for-the-badge&logo=shield" alt="Local-First 100% Offline" /></a>
-    <a href="#architecture"><img src="https://img.shields.io/badge/FastAPI-Python%203.10%2B-009688?style=for-the-badge&logo=fastapi" alt="FastAPI Backend" /></a>
-    <a href="#architecture"><img src="https://img.shields.io/badge/React%2018-Vite%20%2B%20TypeScript-61dafb?style=for-the-badge&logo=react" alt="React 18 Frontend" /></a>
-    <a href="#architecture"><img src="https://img.shields.io/badge/MongoDB-Motor%20Async-47A248?style=for-the-badge&logo=mongodb" alt="MongoDB Async" /></a>
-    <a href="#architecture"><img src="https://img.shields.io/badge/Tailwind-CSS-38bdf8?style=for-the-badge&logo=tailwindcss" alt="Tailwind CSS" /></a>
+    <a href="#architecture-and-systems-engineering"><img src="https://img.shields.io/badge/FastAPI-Python%203.10%2B-009688?style=for-the-badge&logo=fastapi" alt="FastAPI Backend" /></a>
+    <a href="#architecture-and-systems-engineering"><img src="https://img.shields.io/badge/React%2018-Vite%20%2B%20TypeScript-61dafb?style=for-the-badge&logo=react" alt="React 18 Frontend" /></a>
+    <a href="#architecture-and-systems-engineering"><img src="https://img.shields.io/badge/MongoDB-Motor%20Async-47A248?style=for-the-badge&logo=mongodb" alt="MongoDB Async" /></a>
+    <a href="#architecture-and-systems-engineering"><img src="https://img.shields.io/badge/Tailwind-CSS-38bdf8?style=for-the-badge&logo=tailwindcss" alt="Tailwind CSS" /></a>
     <a href="#license"><img src="https://img.shields.io/badge/License-MIT-amber.svg?style=for-the-badge" alt="License MIT" /></a>
   </p>
 
   <p align="center">
     <a href="#why-cherry">Why Cherry</a> •
-    <a href="#workspaces--interface-tour">Workspaces Tour</a> •
+    <a href="#workspaces-and-interface-tour">Workspaces</a> •
     <a href="#temporal-and-governance-matrix">Temporal Matrix</a> •
-    <a href="#architecture--systems-engineering">Architecture</a> •
-    <a href="#ai-co-pilot--two-phase-execution">AI Co-Pilot</a> •
+    <a href="#architecture-and-systems-engineering">Architecture</a> •
+    <a href="#hardened-engineering-guardrails">Guardrails</a> •
     <a href="#getting-started">Getting Started</a> •
     <a href="#configuration-reference">Configuration</a> •
-    <a href="#verification--testing">Verification</a>
+    <a href="#verification-and-testing">Verification</a>
   </p>
 
 </div>
 
 ---
 
-## 💡 Why Cherry?
+## Why Cherry?
 
-Traditional task managers and productivity apps suffer from fatal systemic flaws:
-- ❌ **Fragile Cloud SaaS & Surveillance:** Your intimate daily journals, habits, and schedules are uploaded to commercial clouds, monetized, and subjected to subscription paywalls.
-- ❌ **Endless Procrastination & Arbitrary Postponement:** Standard to-do lists permit infinite task deferrals without friction, encouraging habit drift and cognitive overload.
-- ❌ **Zero Real Accountability:** Goals lack consequences; broken commitments are simply rolled over silently, eroding discipline over time.
-- ❌ **Hallucinating AI Chatbots:** Unconstrained LLM bots unpredictably overwrite databases, delete user entries, or hallucinate task completions without verification.
-- ❌ **Crash-Vulnerable Timers & State:** A laptop reboot or sudden power outage destroys in-progress Pomodoro sessions, corrupts historical logs, and breaks calendar continuity.
+Traditional task managers and productivity platforms suffer from recurring systemic flaws:
+- **Fragile Cloud SaaS & Surveillance:** Personal journals, habits, and schedules are uploaded to commercial servers, monetized, and gated behind subscription paywalls.
+- **Unchecked Postponement & Cognitive Drift:** Standard task lists allow frictionless, infinite deferrals without boundaries, compounding cognitive load.
+- **Lack of True Accountability:** Commitments carry no consequences; skipped habits and broken goals are rolled over silently, eroding discipline.
+- **Unconstrained AI Hallucinations:** Generic LLM integrations mutate database state unpredictably, delete entries without verification, or hallucinate task completions.
+- **Crash-Vulnerable State & Timers:** Sudden laptop shutdowns or power cuts terminate active focus blocks and desynchronize sprint timelines.
 
-**Cherry is engineered differently:**
-- 🛡️ **100% Sovereign & Local-First:** Runs entirely on `127.0.0.7` with a local asynchronous MongoDB instance. Zero remote telemetry, zero analytics tracking, and zero cloud dependencies.
-- ⏳ **The Quarter System Temporal Architecture:** Strict hierarchical boundaries: **Verse** (Year) → **Season** (Month) → **Quarter** (Fixed 7-Day Sprints: Q1–Q4 + Surplus) → **Day**. Each sprint has rigid bookends, a 22:00 check-in, and a hard 23:00 daily closure.
-- ⚖️ **Auditable Governance & Quarter Keys:** Every sprint is endowed with initial Quarter Keys (default: 3). Violations are logged with immutable evidence in an audit ledger. Strict invariant: Junk Point (JP) overages log confirmed infractions but never trigger automated key-slashing.
-- 🔄 **Durable Downtime Catch-Up & Outbox Engine:** Survives sudden reboots and days of system downtime. The background reconciliation state machine chronologically catches up missed periods without ever fabricating historical user actions.
-- 🧠 **Grammar-Constrained AI with Two-Phase Approval:** Cherry AI integrates local LLMs (Lemon) through deterministic live reality snapshots, strict grammar-constrained intent routing, and a two-phase approval gate (dry-run proposal → explicit user execution).
-- 🎨 **Fruit Family Design Aesthetics:** High-craft sensory experience with Cherry signature tokens (`#FAF6F6` warm paper, `#141212` deep charcoal, `#FF5252` cherry flesh, `#4CAF50` leaf green), ambient glass refraction, synthesized spatial audio cues, and instant keyboard navigation (`1-4`, `Ctrl+K`, `n`, `t`, `m`, `?`).
+**Cherry solves these challenges at the architectural level:**
+- **100% Sovereign & Local-First:** Binds strictly to `127.0.0.7` with a local asynchronous MongoDB instance. Zero remote telemetry, zero analytics tracking, and zero cloud dependencies.
+- **The Quarter System Temporal Architecture:** Enforces rigid time boundaries: Verse (Year) &rarr; Season (Month) &rarr; Quarter (fixed 7-day sprints: Q1–Q4 + Surplus) &rarr; Day. Every sprint features fixed bookends, a 22:00 check-in, and a hard 23:00 daily closure.
+- **Auditable Governance & Quarter Keys:** Sprints are endowed with initial Quarter Keys (default: 3). Violations are logged with immutable evidence in an audit ledger. A strict invariant ensures Junk Point (JP) overages record infractions without automated key-slashing.
+- **Durable Downtime Catch-Up:** Survives sudden reboots and extended system downtime. The background reconciliation state machine catches up missed periods chronologically without ever fabricating historical user actions.
+- **Grammar-Constrained AI with Two-Phase Commits:** Integrates local LLMs (Lemon) through deterministic live reality snapshots, strict Pydantic grammars, and a staged approval gate (dry-run proposal &rarr; explicit user execution).
+- **Fruit Family Design System:** Crafted with signature tokens (`#FAF6F6` warm paper, `#141212` charcoal, `#FF5252` cherry flesh, `#4CAF50` leaf green), ambient glass refraction, synthesized Web Audio cues, and full keyboard ergonomics (`1-4`, `Ctrl+K`, `n`, `t`, `m`, `?`).
 
 ---
 
-## 📸 Workspaces & Interface Tour
+## Workspaces and Interface Tour
 
 ### 1. Day Command Center (`/` or `/day`)
 > The daily operational hub with live countdown telemetry, execution Kanban, and deep-work orchestration.
@@ -83,7 +83,7 @@ Traditional task managers and productivity apps suffer from fatal systemic flaws
 
 ---
 
-### 3. Sovereign Notes & Retrospective Hub (`/notes`)
+### 3. Sovereign Notes Hub (`/notes`)
 > Distraction-free, markdown-driven personal knowledge base tied directly to sprint context.
 
 - **GitHub Flavored Markdown:** Powered by `react-markdown`, `remark-gfm`, and `remark-breaks` for rich tables, code blocks, checklists, and formatted notes.
@@ -102,7 +102,7 @@ Traditional task managers and productivity apps suffer from fatal systemic flaws
 
 ---
 
-## 📊 Temporal and Governance Matrix
+## Temporal and Governance Matrix
 
 Cherry organizes time into four immutable nested tiers, eliminating perpetual task rollover and forcing disciplined execution:
 
@@ -116,7 +116,7 @@ Cherry organizes time into four immutable nested tiers, eliminating perpetual ta
 
 ---
 
-## 🏛️ Architecture & Systems Engineering
+## Architecture and Systems Engineering
 
 Cherry is architected as an offline-first distributed system optimized for crash recovery, data integrity, and deterministic execution.
 
@@ -155,7 +155,7 @@ Cherry is architected as an offline-first distributed system optimized for crash
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 🛡️ Hardened Engineering Guardrails
+### Hardened Engineering Guardrails
 
 #### 1. Durable Downtime Catch-Up & Outbox State Machine
 - **Survives Arbitrary Power-Downs:** If the host machine is turned off for days or weeks, upon boot Cherry identifies the chronological gap between the last recorded anchor date and today.
@@ -176,7 +176,7 @@ Cherry is architected as an offline-first distributed system optimized for crash
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - **Python:** 3.10 or newer
@@ -238,7 +238,7 @@ Cherry seamlessly integrates with neighboring Fruit Family services when availab
 
 ---
 
-## ⚙️ Configuration Reference
+## Configuration Reference
 
 Cherry is configured via environment variables or a `.env` file located in the `server` directory:
 
@@ -260,7 +260,7 @@ Cherry is configured via environment variables or a `.env` file located in the `
 
 ---
 
-## 🧪 Verification & Testing
+## Verification and Testing
 
 Cherry features comprehensive automated verification suites covering edge cases, downtime scenarios, and AI grammars:
 
@@ -283,7 +283,7 @@ npm run build
 
 ---
 
-## ⌨️ Keyboard Shortcuts Reference
+## Keyboard Shortcuts Reference
 
 Navigate Cherry at terminal velocity without touching your mouse:
 
@@ -302,7 +302,7 @@ Navigate Cherry at terminal velocity without touching your mouse:
 
 ---
 
-## 📄 License
+## License
 
 Distributed under the **MIT License**.  
 Crafted with pride as part of the sovereign **Fruit Family** ecosystem.
