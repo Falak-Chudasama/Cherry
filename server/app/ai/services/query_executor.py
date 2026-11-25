@@ -16,6 +16,8 @@ from app.core.database import get_db
 from app.core import calendar as cal
 from app.adapters.basket_adapter import basket_adapter
 from app.ai.grammars.query_grammar import QUERY_GRAMMAR, build_safe_query
+from app.services.task_service import task_service
+from app.services.accountability_service import accountability_service
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +30,15 @@ Allowed Collections:
 - "violations": Personal rule violations (no_games, junk_point_limit, no_skip_all_routines)
 - "junk_point_ledger": Bad Diet and junk food log
 - "pomodoro_sessions": Focus time logs
+- "notes": Personal notes
+- "quarter_plans": Saved quarter plans
 
 Allowed JSON fields:
 - "collection": name of collection to query
-- "query": search keywords for title, description, or food name
+- "query": search keywords for title, description, or food name (leave empty string "" if listing all)
 - "status": "Not started" | "In progress" | "Done" | "all"
-- "date_str": YYYY-MM-DD
-- "period_id": period identifier (e.g. 2026-11-Q3)
+- "date_str": YYYY-MM-DD (only when user asks for a specific date)
+- "period_id": period identifier (e.g. 2026-11-Q4)
 - "limit": integer 1-25
 
 Return ONLY the raw JSON object."""
@@ -262,6 +266,40 @@ async def execute_db_query(user_prompt: str, snapshot_text: str = "") -> Dict[st
         target_season = s_match.group(0) if s_match else season_id
         return await generate_season_review(target_season)
 
+    # 1b. Direct high-signal queries (today's tasks, JP budget, notes)
+    if any(k in prompt_lower for k in ("what tasks", "show my tasks", "my tasks", "list tasks", "today's tasks", "tasks today", "tasks right now")):
+        day_tasks = await task_service.get_tasks_for_day(today_str)
+        if not day_tasks:
+            day_tasks = await task_service.get_tasks_for_period(active_period_id)
+        results = [t.model_dump(mode="json") for t in day_tasks[:15]]
+        if not results:
+            summary = f"No tasks found for **{active_period_id}**."
+        else:
+            lines = [f"**{len(results)} task(s)** in **{active_period_id}**:"]
+            for t in day_tasks[:8]:
+                st_info = f" ({sum(1 for s in t.subtasks if s.is_completed)}/{len(t.subtasks)} subtasks)" if t.subtasks else ""
+                lines.append(f"- **{t.title}** — {t.tier or 'Must Do'} · *{t.status}*{st_info}")
+            summary = "\n".join(lines)
+        return {
+            "collection": "tasks",
+            "filter": {"period_id": active_period_id},
+            "result_count": len(results),
+            "summary": summary,
+            "results": results[:10],
+        }
+
+    if any(k in prompt_lower for k in ("how many jp", "how many junk", "junk point", "what did i eat", "diet today")):
+        jp = await accountability_service.get_day_junk_points(today_str, active_period_id)
+        entries = [e.model_dump(mode="json") for e in jp.entries]
+        summary = f"**Diet today ({today_str})**: {jp.accumulated_jp}/{int(jp.limit)} JP used · **{jp.remaining_jp} JP** remaining ({len(entries)} entries)."
+        return {
+            "collection": "junk_point_ledger",
+            "filter": {"date_str": today_str},
+            "result_count": len(entries),
+            "summary": summary,
+            "results": entries[:10],
+        }
+
     # 2. General Query via GBNF Grammar
     full_prompt = f"{snapshot_text}\n\nSearch Request: {user_prompt.strip()}"
     try:
@@ -278,21 +316,44 @@ async def execute_db_query(user_prompt: str, snapshot_text: str = "") -> Dict[st
         mongo_filter = safe_spec["filter"]
         limit = safe_spec["limit"]
 
-        db = get_db()
-        coll = getattr(db, collection_name)
-        cursor = coll.find(mongo_filter).sort("created_at", -1).limit(limit)
-
-        results = []
-        async for doc in cursor:
-            doc.pop("_id", None)
-            results.append(doc)
+        # Special handling for tasks when filtered by date_str
+        if collection_name == "tasks" and safe_spec.get("date_str"):
+            day_tasks = await task_service.get_tasks_for_day(safe_spec["date_str"])
+            q_text = (safe_spec.get("query_text") or "").lower()
+            st_filter = safe_spec.get("status")
+            results = []
+            for t in day_tasks:
+                if st_filter and st_filter != "all" and t.status != st_filter:
+                    continue
+                if q_text and q_text not in t.title.lower() and q_text not in (t.description or "").lower():
+                    continue
+                results.append(t.model_dump(mode="json"))
+        else:
+            db = get_db()
+            coll = getattr(db, collection_name)
+            cursor = coll.find(mongo_filter).sort("created_at", -1).limit(limit)
+            results = []
+            async for doc in cursor:
+                doc.pop("_id", None)
+                results.append(doc)
 
         logger.info(f"[QueryExecutor] Executed query on '{collection_name}' with filter {mongo_filter}: {len(results)} matches.")
 
+        label_map = {
+            "tasks": "tasks",
+            "routine_occurrences": "routines",
+            "violations": "violations",
+            "junk_point_ledger": "diet entries",
+            "pomodoro_sessions": "focus sessions",
+            "notes": "notes",
+            "quarter_plans": "quarter plans",
+        }
+        col_label = label_map.get(collection_name, collection_name)
+
         if not results:
-            summary = f"No matching records found in **{collection_name}** for filter: `{mongo_filter}`."
+            summary = f"No matching {col_label} found."
         else:
-            summary = f"Found **{len(results)}** record(s) in **{collection_name}**."
+            summary = f"Found **{len(results)}** {col_label}."
 
         return {
             "collection": collection_name,

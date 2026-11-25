@@ -149,17 +149,17 @@ class PlanService:
         start_date = quarter_doc.get("start_date") if quarter_doc else cal.format_date(cal.today_local())
 
         for t_prop in plan.tasks:
-            goal_id = priority_to_goal_id.get(t_prop.goal_priority)
+            tier_map = {"MUST": "Must Do", "SHOULD": "Should Do", "ROUTINE": "Routine"}
             await task_service.create_task(
-                quarter_id=quarter_id,
+                period_id=quarter_id,
                 title=t_prop.title,
-                category=t_prop.category,
-                goal_id=goal_id,
+                period_type="SURPLUS" if "SURPLUS" in quarter_id.upper() else ("Q4" if "Q4" in quarter_id.upper() else ("Q3" if "Q3" in quarter_id.upper() else ("Q2" if "Q2" in quarter_id.upper() else "Q1"))),
+                tier=tier_map.get(t_prop.category, "Must Do"),
                 target_date=t_prop.target_date or start_date,
                 deadline=t_prop.deadline,
                 estimated_minutes=t_prop.estimated_minutes,
-                subtask_titles=t_prop.subtasks,
-                status="approved",  # Approved as part of plan
+                subtasks=t_prop.subtasks,
+                status="Not started",
             )
 
         # Mark plan approved
@@ -274,11 +274,13 @@ class PlanService:
         # 2. Approved tasks assigned to this date or carried over
         tasks = await task_service.get_tasks_for_day(date_str)
         for t in tasks:
+            tier_l = (t.tier or "Must Do").lower()
+            mapped_cat: TaskCategory = "MUST" if "must" in tier_l else ("SHOULD" if "should" in tier_l else "ROUTINE")
             items.append(
                 TodoDraftItem(
                     task_id=t.task_id,
                     title=t.title,
-                    category=t.category,
+                    category=mapped_cat,
                     is_routine=False,
                     is_selected=True,
                     estimated_minutes=t.estimated_minutes,
@@ -311,10 +313,10 @@ class PlanService:
         draft.status = "approved"
         draft.approved_at = datetime.utcnow()
 
-        # Update tasks to approved status
+        # Update tasks to active execution status
         for item in draft.items:
             if item.task_id and item.is_selected:
-                await task_service.update_task_status(item.task_id, "approved")
+                await task_service.update_task_status(item.task_id, "In progress")
 
         await self.db.todo_drafts.replace_one({"date_str": date_str}, draft.model_dump())
         return draft

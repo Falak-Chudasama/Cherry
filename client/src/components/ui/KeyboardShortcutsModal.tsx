@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Command, Sun, Volume2 } from 'lucide-react';
+import { X, Command } from 'lucide-react';
 
 interface KeyboardShortcutsModalProps {
   isOpen: boolean;
@@ -82,15 +82,6 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
               </div>
             </div>
           ))}
-        </div>
-
-        <div className="mt-4 pt-3 border-t border-black/5 dark:border-white/10 flex justify-between items-center text-2xs text-stone-400">
-          <span className="flex items-center gap-1">
-            <Sun className="h-2.5 w-2.5" /> Auto Day/Night
-          </span>
-          <span className="flex items-center gap-1">
-            <Volume2 className="h-2.5 w-2.5" /> Audio SFX
-          </span>
         </div>
       </div>
     </div>

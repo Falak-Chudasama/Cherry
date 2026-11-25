@@ -94,48 +94,6 @@
     background-color: rgba(255, 82, 82, 0.32);
     color: #ffcccc;
   }
-
-  /* --- Universal Harmonious Cherry Scrollbars (Requirement 5) --- */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 82, 82, 0.20) transparent;
-  }
-  html.dark * {
-    scrollbar-color: rgba(255, 82, 82, 0.28) transparent;
-  }
-  *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  *::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  *::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.12);
-    border-radius: 9999px;
-    border: 1.5px solid transparent;
-    background-clip: padding-box;
-    transition: background-color 0.2s ease;
-  }
-  html.dark *::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1.5px solid transparent;
-    background-clip: padding-box;
-  }
-  *::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 82, 82, 0.45);
-  }
-  html.dark *::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 82, 82, 0.55);
-  }
-  *::-webkit-scrollbar-button {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
-  }
-  *::-webkit-scrollbar-corner {
-    background: transparent;
-  }
 }
 
 /* --- Glass Material System --- */

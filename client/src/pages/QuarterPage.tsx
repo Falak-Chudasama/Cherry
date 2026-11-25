@@ -548,13 +548,9 @@ export const QuarterPage: React.FC = () => {
             );
           })}
         </div>
-
-        <span className="text-xs text-stone-400 font-medium hidden sm:inline">
-          {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'}
-        </span>
       </div>
 
-      {/* Kanban Board Columns - Requirement 6: Handled overflow, zero unnecessary scrollbars, no UI clipping */}
+      {/* Kanban Board Columns */}
       {loading ? (
         <div className="flex min-h-[35vh] items-center justify-center">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-stone-300 dark:border-stone-700 border-t-cherry-flesh" />
@@ -568,7 +564,7 @@ export const QuarterPage: React.FC = () => {
                 key={col.status}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, col.status)}
-                className="flex flex-col rounded-3xl glass-panel border border-black/[0.06] dark:border-white/[0.08] p-4 min-h-[500px] shadow-soft space-y-3 min-w-0 overflow-hidden"
+                className="flex flex-col rounded-3xl glass-panel border border-black/[0.06] dark:border-white/[0.08] p-4 min-h-[260px] shadow-soft space-y-3 min-w-0 overflow-hidden"
               >
                 {/* Column Header */}
                 <div className="flex items-center justify-between pb-2 border-b border-black/[0.04] dark:border-white/[0.06]">
@@ -589,11 +585,11 @@ export const QuarterPage: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Column Task Cards: overflow-y-auto, overflow-x-hidden to prevent parent horizontal scrollbar */}
+                {/* Column Task Cards */}
                 <div className="flex-1 space-y-2.5 overflow-y-auto overflow-x-hidden pr-0.5">
                   {colTasks.length === 0 ? (
-                    <div className="h-28 flex items-center justify-center border border-dashed border-black/10 dark:border-white/10 rounded-2xl text-stone-400 text-xs">
-                      Drop tasks here
+                    <div className="h-24 flex items-center justify-center border border-dashed border-black/10 dark:border-white/10 rounded-2xl text-stone-400 text-xs">
+                      Empty
                     </div>
                   ) : (
                     colTasks.map((task) => {
@@ -650,8 +646,7 @@ export const QuarterPage: React.FC = () => {
                             {/* Subtasks checklist */}
                             {subtasks.length > 0 && (
                               <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.06] space-y-1">
-                                <div className="flex items-center justify-between text-3xs text-stone-400 font-mono">
-                                  <span>Subtasks</span>
+                                <div className="flex items-center justify-end text-3xs text-stone-400 font-mono">
                                   <span>
                                     {doneSubtasks}/{subtasks.length}
                                   </span>
@@ -694,7 +689,7 @@ export const QuarterPage: React.FC = () => {
                                 ))}
                                 {subtasks.length > 3 && (
                                   <span className="text-3xs text-stone-400 pl-1 block">
-                                    +{subtasks.length - 3} more subtasks
+                                    +{subtasks.length - 3} more
                                   </span>
                                 )}
                               </div>

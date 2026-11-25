@@ -48,21 +48,17 @@ export const TodoDraftCard: React.FC<TodoDraftCardProps> = ({ data, onFinalized 
   };
 
   return (
-    <div className="glass-panel rounded-2xl p-4 sm:p-5 my-2 border border-black/5 dark:border-white/10 text-xs sm:text-sm space-y-3.5 max-w-xl shadow-soft">
-      <div className="flex items-center justify-between border-b border-black/5 dark:border-white/10 pb-2.5">
+    <div className="glass-card rounded-2xl p-3.5 border border-black/[0.07] dark:border-white/[0.08] text-xs space-y-2.5 max-w-lg">
+      <div className="flex items-center justify-between border-b border-black/[0.05] dark:border-white/[0.06] pb-2">
         <div className="flex items-center gap-2">
-          <CheckSquare className="h-4 w-4 text-cherry-flesh" />
-          <span className="font-bold text-stone-900 dark:text-stone-100">
-            Daily Todo Draft — {data.date_str}
+          <CheckSquare className="h-3.5 w-3.5 text-cherry-flesh" />
+          <span className="font-semibold text-stone-900 dark:text-stone-100">
+            Todo Draft · {data.date_str}
           </span>
         </div>
-        {finalized ? (
-          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
+        {finalized && (
+          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold text-2xs">
             <CheckCircle2 className="h-3.5 w-3.5" /> Finalized
-          </span>
-        ) : (
-          <span className="text-2xs text-amber-600 dark:text-amber-400 font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
-            Draft Review
           </span>
         )}
       </div>

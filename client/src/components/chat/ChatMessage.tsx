@@ -1,5 +1,15 @@
-import React, { useState } from "react";
-import { User, Layers, CheckSquare, Search, Activity, ExternalLink, Check, X } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import {
+  Layers,
+  CheckSquare,
+  Search,
+  ExternalLink,
+  Check,
+  X,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { ChatMessage as ChatMessageType } from "../../types";
 import { useEcosystem } from "../../context/EcosystemContext";
 import { api } from "../../lib/api";
@@ -7,14 +17,24 @@ import { playEnter, playBack, playFailed, playNotification } from "../../lib/sou
 import { useToast } from "../ui/ToastProvider";
 import { TodoDraftCard } from "./TodoDraftCard";
 import { TaskListCard } from "./TaskListCard";
+import { FocusCard } from "./FocusCard";
+import { FeedbackCard } from "./FeedbackCard";
+import { PlanProposalCard } from "./PlanProposalCard";
 import { MarkdownRenderer } from "../ui/MarkdownRenderer";
 
 interface ChatMessageProps {
   message: ChatMessageType;
+  isStreaming?: boolean;
+  streamStatus?: string | null;
   onRefresh?: () => void;
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onRefresh }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({
+  message,
+  isStreaming = false,
+  streamStatus = null,
+  onRefresh,
+}) => {
   const isUser = message.role === "user";
   const { openTaskDrawer, openPlanModal, bumpWorkspaceRevision, activeConversationId } = useEcosystem();
   const { push } = useToast();
@@ -26,6 +46,25 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onRefresh }) 
   const [executionResult, setExecutionResult] = useState<string>(
     message.card_data?.result?.message || ""
   );
+  const [copied, setCopied] = useState(false);
+  const [queryExpanded, setQueryExpanded] = useState(false);
+
+  // Sync status when message reloads from backend
+  useEffect(() => {
+    setActionStatus(message.card_data?.status || "pending");
+    setExecutionResult(message.card_data?.result?.message || "");
+  }, [message.message_id, message.card_data?.status, message.card_data?.result?.message]);
+
+  const handleCopyMessage = async () => {
+    if (!message.content) return;
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // ignore clipboard errors
+    }
+  };
 
   const handleApproveAction = async () => {
     if (!message.card_data?.action_id || actionLoading) return;
@@ -42,14 +81,14 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onRefresh }) 
         setActionStatus("executed");
         setExecutionResult(res.message);
         playNotification();
-        push("success", "Action executed successfully.");
+        push("success", res.message || "Done.");
         bumpWorkspaceRevision();
         onRefresh?.();
       } else {
         setActionStatus("failed");
-        setExecutionResult(res.message || "Action execution failed.");
+        setExecutionResult(res.message || "Action failed.");
         playFailed();
-        push("error", res.message || "Failed to execute action.");
+        push("error", res.message || "Action failed.");
       }
     } catch (err: any) {
       setActionStatus("failed");
@@ -71,7 +110,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onRefresh }) 
         message_id: message.message_id,
       });
       setActionStatus("rejected");
-      push("info", "Action proposal rejected.");
       onRefresh?.();
     } catch {
       playFailed();
@@ -80,47 +118,58 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onRefresh }) 
     }
   };
 
-  return (
-    <div className={`flex gap-3 my-3 animate-fade-in ${isUser ? "justify-end" : "justify-start"}`}>
-      {/* Assistant Avatar: Official Cherry Icon */}
-      {!isUser && (
-        <div className="w-8 h-8 rounded-full bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 p-1 flex items-center justify-center shrink-0 mt-0.5">
-          <img
-            src="/icons/cherry-icon.svg"
-            alt="Cherry"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = "/cherry-icon.svg";
-            }}
-            className="w-5 h-5 object-contain"
-          />
+  // User prompt pill (no avatar, crisp minimal bubble)
+  if (isUser) {
+    return (
+      <div className="flex justify-end animate-fade-in">
+        <div className="max-w-[82%] sm:max-w-[75%] px-4 py-2.5 rounded-2xl rounded-br-md bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-950 text-[13px] sm:text-sm leading-relaxed shadow-2xs">
+          <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* Message Body */}
-      <div className={`max-w-2xl ${isUser ? "items-end" : "items-start"} space-y-2`}>
-        {/* Text bubble */}
+  // Borderless editorial assistant response
+  const hasCard = Boolean(message.card_type && message.card_type !== "text" && message.card_data);
+
+  return (
+    <div className="group flex items-start gap-3 animate-fade-in">
+      {/* Bare minimal Cherry mark */}
+      <img
+        src="/icons/cherry-icon.svg"
+        alt="Cherry"
+        onError={(e) => {
+          (e.target as HTMLImageElement).src = "/cherry-icon.svg";
+        }}
+        className="w-5 h-5 object-contain shrink-0 mt-1 opacity-90"
+      />
+
+      <div className="flex-1 min-w-0 space-y-2.5">
+        {/* Live status before tokens arrive */}
+        {!message.content && isStreaming && streamStatus && (
+          <div className="flex items-center gap-2 py-0.5 text-xs text-stone-400 dark:text-stone-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-cherry-flesh animate-pulse" />
+            <span>{streamStatus}</span>
+          </div>
+        )}
+
+        {/* Borderless Markdown Prose */}
         {message.content && (
-          <div
-            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed transition-colors duration-200 ${
-              isUser
-                ? "bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-950 rounded-br-xs font-medium shadow-2xs"
-                : "bg-white/90 dark:bg-[#181915]/90 text-stone-900 dark:text-stone-100 border border-stone-200/80 dark:border-stone-800 rounded-bl-xs shadow-xs"
-            }`}
-          >
-            {isUser ? (
-              <p className="whitespace-pre-wrap">{message.content}</p>
-            ) : (
-              <MarkdownRenderer content={message.content} variant="bubble" />
+          <div className="text-[13px] sm:text-sm leading-relaxed text-stone-800 dark:text-stone-200">
+            <MarkdownRenderer content={message.content} />
+            {isStreaming && !hasCard && (
+              <span className="inline-block w-1.5 h-3.5 ml-1 align-middle rounded-full bg-cherry-flesh animate-pulse" />
             )}
           </div>
         )}
 
         {/* Structured Interactive Cards */}
 
-        {/* 0. Structured Task List Card (Batch Task & Subtask Creation) */}
+        {/* 0. Task List Card */}
         {message.card_type === "task_list_card" && message.card_data && (
           <TaskListCard
             cardData={message.card_data}
+            messageId={message.message_id}
             onTasksAdded={() => {
               bumpWorkspaceRevision();
               onRefresh?.();
@@ -128,20 +177,18 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onRefresh }) 
           />
         )}
 
-        {/* 1. Plan Composer Card -> Open in Plan Workbench */}
+        {/* 1. Plan Composer Card */}
         {message.card_type === "plan_composer" && message.card_data && (
-          <div className="p-4 rounded-2xl bg-white/90 dark:bg-[#161616]/90 border border-cherry-500/30 shadow-md space-y-3 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-xl bg-cherry-500/10 text-cherry-flesh dark:text-cherry-blush">
-                  <Layers className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-sans text-stone-900 dark:text-white">
-                    {message.card_data.quarter_goal || "Drafted Quarter Plan"}
+          <div className="p-3.5 rounded-2xl glass-card border border-black/[0.07] dark:border-white/[0.08] space-y-2.5 max-w-lg animate-fade-in">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Layers className="w-4 h-4 text-cherry-flesh shrink-0" />
+                <div className="min-w-0">
+                  <h4 className="text-xs font-semibold text-stone-900 dark:text-white truncate">
+                    {message.card_data.quarter_goal || "Quarter Plan"}
                   </h4>
-                  <p className="text-[11px] text-stone-400">
-                    {message.card_data.deliverables?.length || 0} task(s) drafted for {message.card_data.period_id}
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                    {message.card_data.deliverables?.length || 0} deliverables
                   </p>
                 </div>
               </div>
@@ -153,20 +200,23 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onRefresh }) 
                     initialDraft: message.card_data,
                   })
                 }
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cherry-flesh hover:bg-cherry-700 text-white text-xs font-semibold shadow transition-all hover:scale-[1.02]"
+                className="btn-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cherry-flesh hover:bg-cherry-600 text-white text-2xs font-semibold shrink-0"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open in Workbench</span>
+                <ExternalLink className="w-3 h-3" />
+                <span>Workbench</span>
               </button>
             </div>
 
-            {message.card_data.deliverables && (
-              <div className="space-y-1.5 pt-1">
+            {message.card_data.deliverables && message.card_data.deliverables.length > 0 && (
+              <div className="space-y-1 pt-1 border-t border-black/[0.04] dark:border-white/[0.05]">
                 {message.card_data.deliverables.slice(0, 3).map((d: any, idx: number) => (
-                  <div key={idx} className="flex items-center justify-between text-xs p-2 rounded-xl bg-stone-50 dark:bg-stone-900/60 border border-stone-200 dark:border-stone-800">
-                    <span className="font-medium text-stone-800 dark:text-stone-200">{d.title}</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
-                      {d.subtasks?.length || 0} subtasks
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between text-xs py-1 text-stone-700 dark:text-stone-300"
+                  >
+                    <span className="truncate">{d.title}</span>
+                    <span className="text-3xs font-mono text-stone-400 shrink-0 ml-2">
+                      {d.subtasks?.length || 0} steps
                     </span>
                   </div>
                 ))}
@@ -175,175 +225,193 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onRefresh }) 
           </div>
         )}
 
-        {/* 2. Task Composer Card -> Open in Task Drawer */}
+        {/* 2. Task Composer Card */}
         {message.card_type === "task_composer" && message.card_data && (
-          <div className="p-4 rounded-2xl bg-white/90 dark:bg-[#161616]/90 border border-cherry-500/30 shadow-md space-y-3 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-xl bg-cherry-500/10 text-cherry-flesh dark:text-cherry-blush">
-                  <CheckSquare className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-sans text-stone-900 dark:text-white">
-                    {message.card_data.title}
-                  </h4>
-                  <p className="text-[11px] text-stone-400">
-                    Priority: {message.card_data.priority || "P2"} | Period: {message.card_data.period_type || "Q4"}
-                  </p>
-                </div>
+          <div className="p-3.5 rounded-2xl glass-card border border-black/[0.07] dark:border-white/[0.08] flex items-center justify-between gap-3 max-w-lg animate-fade-in">
+            <div className="flex items-center gap-2 min-w-0">
+              <CheckSquare className="w-4 h-4 text-cherry-flesh shrink-0" />
+              <div className="min-w-0">
+                <h4 className="text-xs font-semibold text-stone-900 dark:text-white truncate">
+                  {message.card_data.title}
+                </h4>
+                <p className="text-[11px] text-stone-500">
+                  {message.card_data.priority || "Normal"}
+                </p>
               </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                openTaskDrawer({
+                  title: message.card_data.title,
+                  description: message.card_data.description,
+                  priority: message.card_data.priority,
+                  period_id: message.card_data.period_id,
+                  period_type: message.card_data.period_type,
+                  subtasks: message.card_data.subtasks,
+                  mode: "create",
+                })
+              }
+              className="btn-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cherry-flesh hover:bg-cherry-600 text-white text-2xs font-semibold shrink-0"
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span>Edit</span>
+            </button>
+          </div>
+        )}
+
+        {/* 3. Query Result Collapsible Pill */}
+        {message.card_type === "query_result" &&
+          message.card_data?.results &&
+          message.card_data.results.length > 0 && (
+            <div className="max-w-lg">
               <button
                 type="button"
-                onClick={() =>
-                  openTaskDrawer({
-                    title: message.card_data.title,
-                    description: message.card_data.description,
-                    priority: message.card_data.priority,
-                    period_id: message.card_data.period_id,
-                    period_type: message.card_data.period_type,
-                    subtasks: message.card_data.subtasks,
-                    mode: "create",
-                  })
-                }
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cherry-flesh hover:bg-cherry-700 text-white text-xs font-semibold shadow transition-all hover:scale-[1.02]"
+                onClick={() => setQueryExpanded((prev) => !prev)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-card border border-black/[0.07] dark:border-white/[0.08] text-2xs font-medium text-stone-600 dark:text-stone-300 hover:border-black/15 dark:hover:border-white/20 transition"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open in Task Drawer</span>
+                <Search className="w-3 h-3 text-cherry-flesh" />
+                <span>
+                  {message.card_data.result_count} {message.card_data.collection?.replace("_", " ") || "records"}
+                </span>
+                {queryExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </button>
-            </div>
-          </div>
-        )}
 
-        {/* 3. Query Result Card */}
-        {message.card_type === "query_result" && message.card_data && (
-          <div className="p-3.5 rounded-2xl bg-stone-50 dark:bg-[#151515] border border-stone-200 dark:border-stone-800 space-y-2 text-xs">
-            <div className="flex items-center gap-2 text-stone-500 font-medium">
-              <Search className="w-3.5 h-3.5 text-blue-500" />
-              <span>Collection: <strong className="text-stone-800 dark:text-stone-200">{message.card_data.collection}</strong></span>
-              <span className="text-[11px] font-mono">({message.card_data.result_count} results)</span>
-            </div>
-            {message.card_data.results && message.card_data.results.length > 0 && (
-              <div className="space-y-1 pt-1 max-h-48 overflow-y-auto">
-                {message.card_data.results.map((r: any, idx: number) => (
-                  <div key={idx} className="p-2 rounded-lg bg-white dark:bg-stone-900 border border-stone-200/60 dark:border-stone-800/60">
-                    <div className="font-semibold text-stone-900 dark:text-stone-100">
-                      {r.title || r.food_item || r.rule_name || r.name || "Record"}
+              {queryExpanded && (
+                <div className="mt-2 p-2.5 rounded-2xl glass-card border border-black/[0.06] dark:border-white/[0.08] space-y-1.5 max-h-52 overflow-y-auto animate-scale-in">
+                  {message.card_data.results.map((r: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] text-xs"
+                    >
+                      <span className="font-medium text-stone-800 dark:text-stone-200 truncate">
+                        {r.title || r.food_item || r.rule_name || r.name || "Record"}
+                      </span>
+                      {r.status && (
+                        <span className="text-3xs font-mono text-stone-400 shrink-0">
+                          {r.status}
+                        </span>
+                      )}
+                      {r.jp_value !== undefined && (
+                        <span className="text-3xs font-mono text-amber-600 dark:text-amber-400 shrink-0">
+                          +{r.jp_value} JP
+                        </span>
+                      )}
                     </div>
-                    {r.description && <p className="text-[11px] text-stone-500 truncate">{r.description}</p>}
-                    {r.status && <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 font-mono">{r.status}</span>}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+        {/* 4. Action Confirmation Card (Two-Phase Approval Gate) */}
+        {(message.card_type === "action_confirm" || message.card_type === "action_result") &&
+          message.card_data && (
+            <div className="p-3.5 rounded-2xl glass-card border border-black/[0.07] dark:border-white/[0.08] space-y-2.5 max-w-lg animate-fade-in text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5 min-w-0">
+                  <div className="font-semibold text-stone-900 dark:text-white">
+                    {message.card_data.summary || "Confirm Action"}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 4. Action Confirmation Card (Approval Gate) */}
-        {(message.card_type === "action_confirm" || message.card_type === "action_result") && message.card_data && (
-          <div className="p-4 rounded-2xl bg-white/90 dark:bg-[#161616]/90 border border-stone-200 dark:border-stone-800 shadow-md space-y-3 animate-fade-in text-xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-xl bg-cherry-500/10 text-cherry-flesh dark:text-cherry-blush">
-                  <Activity className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold font-sans text-stone-900 dark:text-white">
-                    Action Proposal
-                  </h4>
-                  <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                    {message.card_data.summary || "Pending Confirmation"}
-                  </p>
-                </div>
-              </div>
-              <span
-                className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full uppercase ${
-                  actionStatus === "pending"
-                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
-                    : actionStatus === "executed"
-                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                    : actionStatus === "failed"
-                    ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
-                    : "bg-stone-500/15 text-stone-600 dark:text-stone-400 border border-stone-500/30"
-                }`}
-              >
-                {actionStatus}
-              </span>
-            </div>
-
-            {/* Actions Breakdown */}
-            {message.card_data.actions && (
-              <div className="space-y-1.5 pt-1">
-                {message.card_data.actions.map((act: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-900/60 border border-stone-200 dark:border-stone-800 space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-stone-900 dark:text-stone-100">
-                        {act.target}
-                      </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
-                        {act.action_type}
-                      </span>
-                    </div>
+                  {message.card_data.actions?.[0]?.description && (
                     <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                      {act.description}
+                      {message.card_data.actions[0].description}
                     </p>
-                  </div>
-                ))}
-              </div>
-            )}
+                  )}
+                </div>
 
-            {/* Execution Result Message */}
-            {executionResult && (
-              <div
-                className={`p-2.5 rounded-xl text-[11px] ${
-                  actionStatus === "executed"
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
-                    : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20"
-                }`}
-              >
-                {executionResult}
+                {actionStatus !== "pending" && (
+                  <span
+                    className={`text-3xs font-mono font-semibold px-2 py-0.5 rounded-full uppercase shrink-0 ${
+                      actionStatus === "executed"
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                        : actionStatus === "failed"
+                        ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                        : "bg-stone-500/15 text-stone-500 dark:text-stone-400"
+                    }`}
+                  >
+                    {actionStatus}
+                  </span>
+                )}
               </div>
-            )}
 
-            {/* Approval / Rejection Controls */}
-            {actionStatus === "pending" && (
-              <div className="flex items-center justify-end gap-2 pt-1 border-t border-stone-100 dark:border-stone-800">
-                <button
-                  type="button"
-                  onClick={handleRejectAction}
-                  disabled={actionLoading}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 font-semibold transition"
+              {executionResult && (
+                <p
+                  className={`text-[11px] leading-relaxed ${
+                    actionStatus === "executed"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400"
+                  }`}
                 >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Reject</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleApproveAction}
-                  disabled={actionLoading}
-                  className="flex items-center gap-1 px-4 py-1.5 rounded-xl bg-cherry-flesh hover:bg-cherry-700 text-white font-semibold shadow transition hover:scale-[1.02]"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{actionLoading ? "Executing..." : "Approve & Execute"}</span>
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+                  {executionResult}
+                </p>
+              )}
+
+              {actionStatus === "pending" && (
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleRejectAction}
+                    disabled={actionLoading}
+                    className="flex items-center gap-1 px-3 py-1 rounded-full text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] font-medium transition"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Dismiss</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApproveAction}
+                    disabled={actionLoading}
+                    className="btn-interactive flex items-center gap-1 px-3.5 py-1 rounded-full bg-cherry-flesh hover:bg-cherry-600 text-white font-semibold"
+                  >
+                    <Check className="w-3 h-3" />
+                    <span>{actionLoading ? "Running..." : "Approve"}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
         {message.card_type === "todo_draft" && message.card_data && (
           <TodoDraftCard data={message.card_data} onFinalized={onRefresh} />
         )}
-      </div>
 
-      {/* User Avatar */}
-      {isUser && (
-        <div className="w-8 h-8 rounded-full bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-200 border border-stone-300 dark:border-stone-700 flex items-center justify-center shrink-0 mt-0.5">
-          <User className="w-4 h-4" />
-        </div>
-      )}
+        {message.card_type === "quarter_plan_proposal" && message.card_data && (
+          <PlanProposalCard data={message.card_data} onApproved={onRefresh} />
+        )}
+
+        {message.card_type === "focus_control" && message.card_data && (
+          <FocusCard data={message.card_data} />
+        )}
+
+        {message.card_type === "feedback_report" && message.card_data && (
+          <FeedbackCard data={message.card_data} />
+        )}
+
+        {/* Quiet Hover Copy Row */}
+        {message.content && !isStreaming && (
+          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pt-0.5">
+            <button
+              type="button"
+              onClick={handleCopyMessage}
+              className="flex items-center gap-1 text-3xs text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition"
+              title="Copy response"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3 h-3 text-emerald-500" />
+                  <span className="text-emerald-500">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

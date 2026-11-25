@@ -70,6 +70,7 @@ class BasketAdapter:
             "retrieve_notes": retrieve_notes,
             "retrieve_chat": retrieve_chat,
             "temperature": temperature,
+            "max_tokens": max_tokens,
             "thinking": False,
             "abstracted": True,
             "stream": False,
@@ -217,28 +218,39 @@ class BasketAdapter:
                     json=payload,
                     headers=headers,
                 ) as response:
-                    async for line in response.aiter_lines():
-                        if not line:
-                            continue
-                        # Handle SSE data lines
-                        if line.startswith("data: "):
-                            raw_data = line[6:].strip()
-                            if raw_data == "[DONE]":
-                                break
-                            try:
-                                parsed = json.loads(raw_data)
-                                choices = parsed.get("choices", [])
-                                if choices:
-                                    delta = choices[0].get("delta", {}).get("content", "")
-                                    if delta:
-                                        yield delta
-                            except Exception:
-                                yield raw_data
-                        else:
-                            yield line
+                    if response.status_code >= 400:
+                        logger.warning(f"Basket stream HTTP {response.status_code}")
+                        yield "Basket AI is temporarily unavailable."
+                        return
+
+                    content_type = response.headers.get("content-type", "").lower()
+                    if "text/event-stream" in content_type:
+                        async for line in response.aiter_lines():
+                            if not line:
+                                continue
+                            if line.startswith("data: "):
+                                raw_data = line[6:].strip()
+                                if raw_data == "[DONE]":
+                                    break
+                                try:
+                                    parsed = json.loads(raw_data)
+                                    choices = parsed.get("choices", [])
+                                    if choices:
+                                        delta = choices[0].get("delta", {}).get("content", "")
+                                        if delta:
+                                            yield delta
+                                    elif isinstance(parsed, str):
+                                        yield parsed
+                                except Exception:
+                                    yield raw_data
+                    else:
+                        # Basket abstracted stream emits raw text chunks (text/plain) with preserved spaces and newlines
+                        async for chunk in response.aiter_text():
+                            if chunk:
+                                yield chunk
         except Exception as exc:
             logger.warning(f"Basket stream error: {exc}")
-            yield f"\n[Basket connection error: {exc}]"
+            yield "Unable to reach Basket AI right now. Verify Basket is running or use quick actions."
 
     async def sync_note(
         self,

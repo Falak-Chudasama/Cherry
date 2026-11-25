@@ -58,7 +58,9 @@ async def chat_stream_endpoint(payload: StreamChatPayload):
     """
     sid = payload.session_id
     if not sid:
-        conv = await chat_service.create_new_conversation(title=payload.content[:30])
+        words = payload.content.strip().split()
+        initial_title = " ".join(words[:5])[:48] if words else "New Chat"
+        conv = await chat_service.create_new_conversation(title=initial_title, include_greeting=False)
         sid = conv["session_id"]
 
     return StreamingResponse(
@@ -167,12 +169,36 @@ class RejectActionPayload(BaseModel):
     message_id: Optional[str] = None
 
 
+class UpdateCardStatePayload(BaseModel):
+    session_id: str
+    message_id: str
+    card_updates: Dict[str, Any]
+
+
+@router.post("/cards/state")
+async def update_card_state(payload: UpdateCardStatePayload):
+    """Persist interactive card state (e.g. TaskListCard added=True) in cherry.chats."""
+    db = get_db()
+    set_fields = {f"messages.$.card_data.{k}": v for k, v in payload.card_updates.items()}
+    if not set_fields:
+        return {"updated": False}
+    res = await db.chats.update_one(
+        {
+            "session_id": payload.session_id,
+            "application": "cherry",
+            "messages.message_id": payload.message_id,
+        },
+        {"$set": set_fields},
+    )
+    return {"updated": res.modified_count > 0}
+
+
 @router.post("/actions/execute")
 async def execute_action_endpoint(payload: ExecuteActionPayload):
     """
     Strict Human-in-the-Loop Approval Execution Endpoint.
     Validates pending status, ensures idempotency, runs domain services,
-    and updates conversation card state.
+    and updates conversation card state in cherry.chats.
     """
     db = get_db()
     existing = await db.executed_actions.find_one({"action_id": payload.action_id})
@@ -189,9 +215,9 @@ async def execute_action_endpoint(payload: ExecuteActionPayload):
         "result": res,
     })
 
-    # Update conversation message card state if session_id provided
+    # Update conversation message card state in cherry.chats
     if payload.session_id:
-        await db.conversations.update_one(
+        await db.chats.update_one(
             {
                 "session_id": payload.session_id,
                 "messages.card_data.action_id": payload.action_id,
@@ -211,7 +237,7 @@ async def execute_action_endpoint(payload: ExecuteActionPayload):
 async def reject_action_endpoint(payload: RejectActionPayload):
     """
     Rejection Endpoint for Staged Actions.
-    Marks action as rejected and updates conversation message card state.
+    Marks action as rejected and updates conversation message card state in cherry.chats.
     """
     db = get_db()
     existing = await db.executed_actions.find_one({"action_id": payload.action_id})
@@ -225,7 +251,7 @@ async def reject_action_endpoint(payload: RejectActionPayload):
     })
 
     if payload.session_id:
-        await db.conversations.update_one(
+        await db.chats.update_one(
             {
                 "session_id": payload.session_id,
                 "messages.card_data.action_id": payload.action_id,

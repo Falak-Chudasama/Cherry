@@ -276,6 +276,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  updateCardState: (payload: { session_id: string; message_id: string; card_updates: Record<string, any> }) =>
+    request<{ updated: boolean }>("/api/chat/cards/state", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 
   // Focus & Lemon direct controls
   completeFocus: (sessionId: string) =>

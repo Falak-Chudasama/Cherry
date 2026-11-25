@@ -47,22 +47,19 @@ export const PlanProposalCard: React.FC<PlanProposalCardProps> = ({ data, onAppr
   };
 
   return (
-    <div className="glass-panel rounded-2xl p-4 my-2 border border-black/5 dark:border-white/10 text-xs space-y-3 max-w-lg shadow-soft">
+    <div className="glass-card rounded-2xl p-3.5 border border-black/[0.07] dark:border-white/[0.08] text-xs space-y-2.5 max-w-lg">
       {/* Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-black/5 dark:border-white/10">
+      <div className="flex items-center justify-between pb-2 border-b border-black/[0.05] dark:border-white/[0.06]">
         <div className="flex items-center gap-2">
-          <Target className="h-4 w-4 text-cherry-flesh" />
-          <span className="font-bold text-stone-900 dark:text-stone-100">
+          <Target className="h-3.5 w-3.5 text-cherry-flesh" />
+          <span className="font-semibold text-stone-900 dark:text-stone-100">
             {data.quarter_id} Plan
           </span>
-          <span className="text-2xs text-stone-400 font-mono">v{data.version}</span>
         </div>
-        {approved ? (
+        {approved && (
           <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold text-2xs">
             <CheckCircle2 className="h-3 w-3" /> Approved
           </span>
-        ) : (
-          <span className="text-2xs text-amber-600 dark:text-amber-400 font-medium">Pending Approval</span>
         )}
       </div>
 

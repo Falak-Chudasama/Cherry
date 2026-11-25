@@ -355,15 +355,12 @@ export const PlanWorkbenchModal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="font-display text-base font-bold text-stone-900 dark:text-stone-100">
-                  Plan {isSurplus ? 'Surplus Period' : `Quarter (${targetPeriodId})`}
+                  {isSurplus ? 'Surplus Plan' : `Quarter Plan`}
                 </h2>
-                <span className="text-2xs font-mono font-bold px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
+                <span className="text-2xs font-mono font-semibold px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
                   {dateRangeDisplay}
                 </span>
               </div>
-              <p className="text-2xs text-stone-500">
-                Craft and balance your 7-day execution schedule. Database is untouched until you commit.
-              </p>
             </div>
           </div>
 
@@ -393,7 +390,7 @@ export const PlanWorkbenchModal: React.FC = () => {
               return (
                 <div
                   key={dayNum}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-micro font-mono font-bold border transition ${
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-3xs font-mono font-bold border transition ${
                     isOverloaded
                       ? 'bg-amber-500/15 border-amber-500/40 text-amber-800 dark:text-amber-200'
                       : isModerate
@@ -403,9 +400,8 @@ export const PlanWorkbenchModal: React.FC = () => {
                   title={`Day ${dayNum}: ${count} active subtasks`}
                 >
                   <span>D{dayNum}</span>
-                  <span className="opacity-60">•</span>
+                  <span className="opacity-60">·</span>
                   <span>{count}</span>
-                  {isOverloaded && <span className="text-amber-600">⚠️</span>}
                 </div>
               );
             })}
@@ -432,7 +428,7 @@ export const PlanWorkbenchModal: React.FC = () => {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-stone-800 dark:text-stone-200">
-                Tasks & Deliverables ({tasks.length})
+                Deliverables ({tasks.length})
               </h3>
               <button
                 type="button"
@@ -620,13 +616,13 @@ export const PlanWorkbenchModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Plum-Style Embedded AI Refinement Bar */}
+          {/* Embedded AI Refinement Bar */}
           <div className="p-4 rounded-2xl glass-panel border border-cherry-500/20 space-y-3 bg-cherry-500/[0.02]">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-cherry-flesh" />
                 <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
-                  AI Refinement Assistant
+                  Refine with AI
                 </span>
               </div>
 
@@ -642,7 +638,7 @@ export const PlanWorkbenchModal: React.FC = () => {
                         : 'text-stone-600 dark:text-stone-400'
                     }`}
                   >
-                    Selected Task ({tasks[selectedTaskIndex]?.title ? `"${tasks[selectedTaskIndex].title.slice(0, 15)}..."` : 'None'})
+                    Selected
                   </button>
                   <button
                     type="button"
@@ -653,7 +649,7 @@ export const PlanWorkbenchModal: React.FC = () => {
                         : 'text-stone-600 dark:text-stone-400'
                     }`}
                   >
-                    Whole Plan
+                    All
                   </button>
                 </div>
 
@@ -664,7 +660,7 @@ export const PlanWorkbenchModal: React.FC = () => {
                     className="flex items-center gap-1 text-2xs font-bold text-amber-600 dark:text-amber-400 hover:underline"
                   >
                     <Undo2 className="h-3 w-3" />
-                    <span>Undo AI Edit</span>
+                    <span>Undo</span>
                   </button>
                 )}
               </div>
@@ -702,30 +698,24 @@ export const PlanWorkbenchModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Hard Approval Footer */}
-        <div className="p-4 border-t border-black/5 dark:border-white/10 bg-white/40 dark:bg-black/20 flex items-center justify-between gap-4">
-          <p className="text-2xs text-stone-500">
-            🔒 <strong className="font-semibold text-stone-700 dark:text-stone-300">Human-In-The-Loop:</strong> Database is untouched until you click Commit.
-          </p>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={closePlanModal}
-              className="px-4 py-2 rounded-2xl text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleCommitPlan}
-              disabled={isCommitting || tasks.length === 0}
-              className="px-5 py-2 rounded-2xl text-xs font-bold bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-xs hover:opacity-90 disabled:opacity-40 transition flex items-center gap-1.5"
-            >
-              {isCommitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-              <span>Commit Plan to Quarter</span>
-            </button>
-          </div>
+        {/* Commit Footer */}
+        <div className="p-4 border-t border-black/5 dark:border-white/10 bg-white/40 dark:bg-black/20 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={closePlanModal}
+            className="px-4 py-2 rounded-2xl text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleCommitPlan}
+            disabled={isCommitting || tasks.length === 0}
+            className="px-5 py-2 rounded-2xl text-xs font-bold bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-xs hover:opacity-90 disabled:opacity-40 transition flex items-center gap-1.5"
+          >
+            {isCommitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+            <span>Commit Plan</span>
+          </button>
         </div>
       </div>
     </div>

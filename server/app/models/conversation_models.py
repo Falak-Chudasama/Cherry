@@ -14,9 +14,11 @@ import uuid
 MessageRole = Literal["user", "assistant", "system"]
 CardType = Literal[
     "text",
+    "task_list_card",
     "plan_composer",
     "task_composer",
     "query_result",
+    "action_confirm",
     "action_result",
     "quarter_plan_proposal",
     "todo_draft",

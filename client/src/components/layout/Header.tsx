@@ -173,7 +173,11 @@ export function Header() {
                 playEnter();
                 openAiDrawer();
               }}
-              className="focus-ring flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 text-xs font-medium border border-stone-200 dark:border-stone-700 transition"
+              className={`focus-ring flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+                location.pathname === '/chat'
+                  ? 'bg-cherry-500/15 text-cherry-700 dark:text-cherry-300 border-cherry-500/35'
+                  : 'bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 border-stone-200 dark:border-stone-700'
+              }`}
               title="Ask Cherry AI (/ or Ctrl+K)"
             >
               <Sparkles className="h-3.5 w-3.5 text-cherry-flesh dark:text-cherry-blush" />
@@ -246,6 +250,18 @@ export function Header() {
 
         {/* Mobile Utility Icons */}
         <div className="flex items-center gap-1.5">
+          <NavLink
+            to="/notes"
+            onClick={() => playPageNav()}
+            className={({ isActive }) =>
+              `p-1.5 rounded-full transition ${
+                isActive ? 'text-stone-900 dark:text-white bg-black/[0.06] dark:bg-white/10' : 'text-stone-600 dark:text-stone-300'
+              }`
+            }
+            aria-label="Notes"
+          >
+            <BookOpen className="h-4 w-4" />
+          </NavLink>
           <button
             type="button"
             onClick={() => {

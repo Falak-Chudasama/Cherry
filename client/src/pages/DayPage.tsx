@@ -3,10 +3,7 @@ import {
   CheckSquare,
   Square,
   Plus,
-  Circle,
-  CheckCircle2,
   Clock,
-  ListTodo,
   Flame,
   Repeat,
   Trash2,
@@ -348,32 +345,6 @@ export const DayPage: React.FC = () => {
     return Math.round((completedCount / todayTasks.length) * 100);
   }, [todayTasks, completedCount]);
 
-  const getTierBadge = (tier?: TaskTier | string) => {
-    const norm = (tier || '').toLowerCase();
-    if (norm.includes('must')) {
-      return (
-        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 shrink-0">
-          <Flame className="h-3 w-3 text-rose-500" />
-          <span>Must Do</span>
-        </span>
-      );
-    }
-    if (norm.includes('should')) {
-      return (
-        <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 shrink-0">
-          <Clock className="h-3 w-3 text-orange-500" />
-          <span>Should Do</span>
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0">
-        <Repeat className="h-3 w-3 text-purple-500" />
-        <span>Routine</span>
-      </span>
-    );
-  };
-
   const getTaskDaysBadge = (task: Task) => {
     const days =
       task.scheduled_days ||
@@ -383,76 +354,47 @@ export const DayPage: React.FC = () => {
     if (!days || days.length === 0) return null;
     const isSurplus = (task.period_id || '').includes('SURPLUS');
     const tDays = isSurplus ? 3 : 7;
-    const label =
-      days.length >= tDays
-        ? 'All Days'
-        : days.length === 1
-        ? `Day ${days[0]}`
-        : `D${days[0]}–${days[days.length - 1]}`;
+    if (days.length >= tDays) return null;
+    const label = days.length === 1 ? `D${days[0]}` : `D${days[0]}–${days[days.length - 1]}`;
 
     return (
-      <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-200/60 dark:border-stone-700/60 shrink-0 whitespace-nowrap">
+      <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 shrink-0 whitespace-nowrap">
         {label}
       </span>
     );
   };
 
-  // Requirement 3: Status pills colored, but subtle
-  const getStatusBadge = (status: KanbanStatus) => {
-    switch (status) {
-      case 'Done':
-        return (
-          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 transition-colors">
-            <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-            <span>Done</span>
-          </span>
-        );
-      case 'In progress':
-        return (
-          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/25 transition-colors">
-            <Clock className="h-3 w-3 text-sky-600 dark:text-sky-400" />
-            <span>In Progress</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="flex items-center gap-1 text-2xs font-semibold px-2.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border border-stone-200/80 dark:border-stone-700/80 transition-colors">
-            <Circle className="h-3 w-3 text-stone-400" />
-            <span>Not Started</span>
-          </span>
-        );
-    }
-  };
-
   // Render a single task card
   const renderTaskCard = (task: Task) => {
     const isDone = task.status === 'Done';
+    const isInProgress = task.status === 'In progress';
     const subtasks = task.subtasks || [];
     const doneSubtasks = subtasks.filter((s) => s.is_completed).length;
+    const daysBadge = getTaskDaysBadge(task);
 
     return (
       <div
         key={task.task_id}
         onClick={() => openTaskDrawer({ task, mode: 'edit' })}
-        className={`glass-card rounded-2xl p-4 border transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer group shadow-2xs hover:shadow-md hover:border-black/20 dark:hover:border-white/20 select-none overflow-hidden ${
+        className={`glass-card rounded-2xl p-3.5 border transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer group shadow-2xs hover:shadow-md hover:border-black/20 dark:hover:border-white/20 select-none overflow-hidden ${
           isDone
-            ? 'border-black/[0.04] dark:border-white/[0.05] opacity-75'
+            ? 'border-black/[0.04] dark:border-white/[0.05] opacity-70'
             : 'border-black/[0.07] dark:border-white/[0.09]'
         }`}
       >
-        <div className="space-y-2.5">
-          {/* Card Top: Title, Status toggle, Trash */}
-          <div className="flex items-start justify-between gap-2.5">
+        <div className="space-y-2">
+          {/* Card Top: Status Toggle, Title, Subtle Meta & Trash */}
+          <div className="flex items-start justify-between gap-2">
             <div className="flex items-start gap-2.5 flex-1 min-w-0">
               <button
                 type="button"
                 onClick={(e) => cycleTaskStatus(task, e)}
                 className="mt-0.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition shrink-0"
-                title="Click to cycle status"
+                title="Cycle status"
               >
                 {isDone ? (
                   <CheckSquare className="h-4 w-4 text-emerald-500 fill-emerald-500/20" />
-                ) : task.status === 'In progress' ? (
+                ) : isInProgress ? (
                   <Clock className="h-4 w-4 text-sky-500" />
                 ) : (
                   <Square className="h-4 w-4" />
@@ -471,6 +413,12 @@ export const DayPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
+              {isInProgress && (
+                <span className="text-3xs font-semibold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300">
+                  In Progress
+                </span>
+              )}
+              {daysBadge}
               <button
                 type="button"
                 onClick={(e) => handleDeleteTask(task.task_id, task.title, e)}
@@ -479,24 +427,11 @@ export const DayPage: React.FC = () => {
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
-              <div
-                onClick={(e) => cycleTaskStatus(task, e)}
-                className="cursor-pointer"
-                title="Change status"
-              >
-                {getStatusBadge(task.status)}
-              </div>
             </div>
           </div>
 
-          {/* Card Badges Row */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {getTierBadge(task.tier)}
-            {getTaskDaysBadge(task)}
-          </div>
-
           {task.description && (
-            <p className="text-2xs text-stone-500 line-clamp-2">
+            <p className="text-2xs text-stone-500 line-clamp-2 pl-6">
               {task.description}
             </p>
           )}
@@ -504,14 +439,13 @@ export const DayPage: React.FC = () => {
           {/* Subtasks Checklist */}
           {subtasks.length > 0 && (
             <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.06] space-y-1">
-              <div className="flex items-center justify-between text-3xs text-stone-400 font-mono">
-                <span>Subtasks</span>
+              <div className="flex items-center justify-end text-3xs text-stone-400 font-mono">
                 <span>
-                  {doneSubtasks}/{subtasks.length} done
+                  {doneSubtasks}/{subtasks.length}
                 </span>
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {subtasks.map((st) => (
                   <div
                     key={st.subtask_id}
@@ -543,7 +477,7 @@ export const DayPage: React.FC = () => {
                     </div>
 
                     {(st.start_day !== undefined || st.end_day !== undefined) && (
-                      <span className="font-mono text-3xs px-1 rounded bg-stone-200/60 dark:bg-stone-800 text-stone-500 shrink-0">
+                      <span className="font-mono text-3xs text-stone-400 shrink-0 ml-2">
                         D{st.start_day ?? 1}–{st.end_day ?? 7}
                       </span>
                     )}
@@ -564,7 +498,7 @@ export const DayPage: React.FC = () => {
     icon: React.ReactNode,
     taskList: Task[],
     accentBorder: string,
-    emptyMessage: string
+    _emptyMessage: string
   ) => {
     return (
       <div className="flex flex-col rounded-3xl glass-panel border border-black/[0.06] dark:border-white/[0.08] p-4 shadow-soft space-y-3 min-w-0">
@@ -594,26 +528,20 @@ export const DayPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Task Cards or Restrained Empty State */}
+        {/* Task Cards or Minimal Empty State */}
         <div className="space-y-2.5 overflow-y-auto overflow-x-hidden pr-0.5">
           {taskList.length === 0 ? (
-            <div className={`p-6 rounded-2xl border border-dashed ${accentBorder} text-center space-y-2`}>
-              <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-xl bg-black/[0.02] dark:bg-white/[0.03] text-stone-400">
-                <ListTodo className="h-4 w-4" />
-              </div>
-              <p className="text-xs font-medium text-stone-400">{emptyMessage}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  playEnter();
-                  openTaskDrawer({ mode: 'create', tier });
-                }}
-                className="text-2xs font-semibold text-cherry-flesh hover:underline inline-flex items-center gap-1"
-              >
-                <Plus className="h-3 w-3" />
-                <span>Add task</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                playEnter();
+                openTaskDrawer({ mode: 'create', tier });
+              }}
+              className={`w-full py-6 rounded-2xl border border-dashed ${accentBorder} text-center text-xs text-stone-400 hover:text-cherry-flesh hover:border-cherry-500/30 transition flex items-center justify-center gap-1.5`}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Add task</span>
+            </button>
           ) : (
             taskList.map(renderTaskCard)
           )}
@@ -711,15 +639,11 @@ export const DayPage: React.FC = () => {
                     : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
                 }`}
               >
-                {t === 'ALL' ? 'All Sections' : t}
+                {t === 'ALL' ? 'All' : t}
               </button>
             );
           })}
         </div>
-
-        <span className="text-xs text-stone-400 font-medium hidden sm:inline">
-          {todayTasks.length} {todayTasks.length === 1 ? 'task' : 'tasks'} today
-        </span>
       </div>
 
       {/* Tasks Content / Grid */}

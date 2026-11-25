@@ -641,22 +641,22 @@ export const TaskDrawer: React.FC = () => {
           {/* 1. Task Title */}
           <div className="space-y-2">
             <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              Task title
+              Title
             </label>
             <input
               type="text"
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="What needs to be accomplished?"
+              placeholder="What needs to get done?"
               className="w-full px-4 py-3 rounded-2xl bg-stone-50 dark:bg-stone-900/80 border border-black/[0.08] dark:border-white/[0.10] text-sm font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-cherry-500/40 transition shadow-2xs"
             />
           </div>
 
-          {/* 2. Execution Tier (Must Do, Should Do, Routine) */}
+          {/* 2. Tier */}
           <div className="space-y-2">
             <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              Execution tier
+              Tier
             </label>
             <div className="grid grid-cols-3 gap-2.5">
               {(['Must Do', 'Should Do', 'Routine'] as const).map((t) => {
@@ -696,11 +696,11 @@ export const TaskDrawer: React.FC = () => {
             </div>
           </div>
 
-          {/* 3. Task Scheduled Day(s) - Feedback 1: Container perfectly fits buttons with circular ends */}
+          {/* 3. Days */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-                Scheduled day(s)
+                Days
               </label>
               <button
                 type="button"
@@ -810,16 +810,16 @@ export const TaskDrawer: React.FC = () => {
             </div>
           </div>
 
-          {/* 5. Notes & Acceptance Criteria */}
+          {/* 5. Notes */}
           <div className="space-y-2">
             <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              Notes & criteria (optional)
+              Notes
             </label>
             <textarea
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add details, links, or context..."
+              placeholder="Optional context or links..."
               className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-stone-900/80 border border-black/[0.08] dark:border-white/[0.10] text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-cherry-500/40 resize-none transition shadow-2xs"
             />
           </div>
@@ -827,14 +827,9 @@ export const TaskDrawer: React.FC = () => {
           {/* 6. Subtasks Checklist */}
           <div className="space-y-3 pt-3 border-t border-black/[0.05] dark:border-white/[0.08]">
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <h4 className="text-xs font-bold text-stone-800 dark:text-stone-200 uppercase tracking-wider truncate">
-                  Subtasks {subtasks.length > 0 && `(${subtasks.length})`}
-                </h4>
-                <p className="text-[11px] text-stone-400 truncate">
-                  Optional day breakdown ({isSurplus ? 'D1–D3' : 'D1–D7'})
-                </p>
-              </div>
+              <h4 className="text-xs font-bold text-stone-800 dark:text-stone-200 uppercase tracking-wider truncate">
+                Subtasks {subtasks.length > 0 && `(${subtasks.length})`}
+              </h4>
 
               <button
                 type="button"
@@ -962,7 +957,7 @@ export const TaskDrawer: React.FC = () => {
                 className="whitespace-nowrap flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-cherry-flesh dark:hover:text-cherry-blush transition py-1"
               >
                 <Sparkles className="h-3.5 w-3.5 text-cherry-flesh shrink-0" />
-                <span>Need help breaking this down? Ask AI</span>
+                <span>Break down with AI</span>
               </button>
             ) : (
               <div className="p-3.5 rounded-2xl bg-white dark:bg-stone-900/80 border border-cherry-500/20 space-y-2.5 animate-scale-in">

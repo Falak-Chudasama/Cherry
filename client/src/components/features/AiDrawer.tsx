@@ -60,22 +60,22 @@ export const AiDrawer: React.FC = () => {
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-md transition-all duration-400 ease-out ${
+        className={`fixed inset-0 z-40 bg-black/35 backdrop-blur-md transition-all duration-400 ease-out ${
           isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={handleAnimatedClose}
       />
 
-      {/* Floating Rounded AI Drawer Modal with Apple-grade Smooth Slide Transitions */}
+      {/* Floating Frosted Glass AI Drawer */}
       <aside
-        className={`fixed top-3 bottom-3 right-3 sm:top-4 sm:bottom-4 sm:right-4 z-50 w-[calc(100%-1.5rem)] sm:w-[420px] rounded-3xl bg-stone-50/95 dark:bg-[#181915]/95 backdrop-blur-xl border border-black/10 dark:border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform will-change-transform ${
+        className={`fixed top-3 bottom-3 right-3 sm:top-4 sm:bottom-4 sm:right-4 z-50 w-[calc(100%-1.5rem)] sm:w-[460px] rounded-3xl bg-[#FAF6F6]/92 dark:bg-[#161714]/92 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.10] shadow-2xl flex flex-col justify-between overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform will-change-transform ${
           isVisible
             ? 'translate-x-0 opacity-100 scale-100 pointer-events-auto'
             : 'translate-x-[calc(100%+3rem)] opacity-0 scale-[0.98] pointer-events-none'
         }`}
         role="dialog"
         aria-modal="true"
-        aria-label="AI Assistant Drawer"
+        aria-label="Cherry AI"
       >
         <ChatStreamView
           isDrawerMode

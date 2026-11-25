@@ -4,13 +4,13 @@ Enforces allowlisted collections and parameters with regex escaping.
 """
 import json
 import re
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 QUERY_GRAMMAR = r"""
 root ::= "{" ws query-fields ws "}"
 query-fields ::= field (ws "," ws field)*
 field ::= collection-field | query-text-field | status-field | date-field | period-field | limit-field
-collection-field ::= "\"collection\":" ws ("\"tasks\"" | "\"routine_occurrences\"" | "\"violations\"" | "\"junk_point_ledger\"" | "\"pomodoro_sessions\"")
+collection-field ::= "\"collection\":" ws ("\"tasks\"" | "\"routine_occurrences\"" | "\"violations\"" | "\"junk_point_ledger\"" | "\"pomodoro_sessions\"" | "\"notes\"" | "\"quarter_plans\"")
 query-text-field ::= "\"query\":" ws json-string
 status-field ::= "\"status\":" ws ("\"Not started\"" | "\"In progress\"" | "\"Done\"" | "\"all\"")
 date-field ::= "\"date_str\":" ws json-string
@@ -26,6 +26,8 @@ ALLOWED_COLLECTIONS = {
     "violations",
     "junk_point_ledger",
     "pomodoro_sessions",
+    "notes",
+    "quarter_plans",
 }
 
 
@@ -44,37 +46,58 @@ def build_safe_query(raw_output: str) -> Dict[str, Any]:
     if collection not in ALLOWED_COLLECTIONS:
         collection = "tasks"
 
+    and_clauses: List[Dict[str, Any]] = []
     query_filter: Dict[str, Any] = {}
     query_text = str(parsed.get("query", "")).strip()
     status = parsed.get("status")
-    date_str = parsed.get("date_str")
-    period_id = parsed.get("period_id")
+    date_str = str(parsed.get("date_str", "") or "").strip()
+    period_id = str(parsed.get("period_id", "") or "").strip()
 
     if status and status != "all":
         query_filter["status"] = status
 
-    if date_str:
+    # Tasks collection stores target_date (not date_str)
+    if date_str and collection != "tasks":
         query_filter["date_str"] = date_str
 
     if period_id:
-        query_filter["$or"] = [{"period_id": period_id}, {"quarter_id": period_id}]
+        and_clauses.append({"$or": [{"period_id": period_id}, {"quarter_id": period_id}]})
 
     if query_text:
         escaped = escape_regex(query_text)
         if collection == "tasks":
-            query_filter["$or"] = [
-                {"title": {"$regex": escaped, "$options": "i"}},
-                {"description": {"$regex": escaped, "$options": "i"}},
-            ]
+            and_clauses.append({
+                "$or": [
+                    {"title": {"$regex": escaped, "$options": "i"}},
+                    {"description": {"$regex": escaped, "$options": "i"}},
+                ]
+            })
         elif collection == "routine_occurrences":
             query_filter["title"] = {"$regex": escaped, "$options": "i"}
         elif collection == "violations":
-            query_filter["$or"] = [
-                {"rule_name": {"$regex": escaped, "$options": "i"}},
-                {"evidence": {"$regex": escaped, "$options": "i"}},
-            ]
+            and_clauses.append({
+                "$or": [
+                    {"rule_name": {"$regex": escaped, "$options": "i"}},
+                    {"evidence": {"$regex": escaped, "$options": "i"}},
+                ]
+            })
         elif collection == "junk_point_ledger":
             query_filter["food_item"] = {"$regex": escaped, "$options": "i"}
+        elif collection == "notes":
+            and_clauses.append({
+                "$or": [
+                    {"title": {"$regex": escaped, "$options": "i"}},
+                    {"content": {"$regex": escaped, "$options": "i"}},
+                    {"tags": {"$regex": escaped, "$options": "i"}},
+                ]
+            })
+        elif collection == "quarter_plans":
+            query_filter["quarter_goal"] = {"$regex": escaped, "$options": "i"}
+
+    if len(and_clauses) == 1:
+        query_filter.update(and_clauses[0])
+    elif len(and_clauses) > 1:
+        query_filter["$and"] = and_clauses
 
     try:
         limit = max(1, min(25, int(parsed.get("limit", 10))))
@@ -84,5 +107,8 @@ def build_safe_query(raw_output: str) -> Dict[str, Any]:
     return {
         "collection": collection,
         "filter": query_filter,
+        "date_str": date_str or None,
+        "query_text": query_text,
+        "status": status,
         "limit": limit,
     }

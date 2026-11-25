@@ -62,23 +62,25 @@ class ChatService:
             })
         return results
 
-    async def create_new_conversation(self, title: Optional[str] = None) -> Dict[str, Any]:
+    async def create_new_conversation(self, title: Optional[str] = None, include_greeting: bool = True) -> Dict[str, Any]:
         session_id = str(uuid.uuid4())
         now = _now_str()
 
-        initial_msg = {
-            "message_id": str(uuid.uuid4()),
-            "role": "assistant",
-            "content": "Hello! I am Cherry, your operating assistant. How can we organize your work, plan a Quarter, or review focus today?",
-            "card_type": "text",
-            "created_at": now,
-        }
+        messages = []
+        if include_greeting:
+            messages.append({
+                "message_id": str(uuid.uuid4()),
+                "role": "assistant",
+                "content": "Hello! I am Cherry, your operating assistant. How can we organize your work, plan a Quarter, or review focus today?",
+                "card_type": "text",
+                "created_at": now,
+            })
 
         doc = {
             "session_id": session_id,
             "title": title or "New Chat",
             "application": "cherry",
-            "messages": [initial_msg],
+            "messages": messages,
             "created_at": now,
             "updated_at": now,
         }
@@ -89,7 +91,7 @@ class ChatService:
             "session_id": session_id,
             "title": doc["title"],
             "application": "cherry",
-            "messages": [initial_msg],
+            "messages": messages,
             "created_at": now,
             "updated_at": now,
         }
@@ -237,7 +239,7 @@ class ChatService:
         session_doc = await self.db.chats.find_one({"session_id": session_id, "application": "cherry"})
         if session_doc:
             user_msgs = [m for m in session_doc.get("messages", []) if m.get("role") == "user"]
-            if len(user_msgs) == 1 and session_doc.get("title", "") in ("", "New Conversation"):
+            if len(user_msgs) == 1 and session_doc.get("title", "") in ("", "New Conversation", "New Chat"):
                 try:
                     title_res = await basket_adapter.completion(
                         prompt=f"User: {user_text}\nAssistant: {assistant_content[:150]}",

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Send,
+  ArrowUp,
   Plus,
   Square,
   Sparkles,
@@ -8,8 +8,8 @@ import {
   Maximize2,
   X,
   Layers,
-  Activity,
-  Loader2,
+  Flame,
+  ListChecks,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { playEnter, playNotification, playFailed } from '../../lib/sound';
@@ -26,28 +26,24 @@ export interface ChatStreamViewProps {
 
 const STARTER_PROMPTS = [
   {
-    title: 'Create tasks with Must Do & Should Do tiers',
-    description: 'Add priority-tagged daily tasks directly to Kanban',
-    prompt: 'Add these 2 tasks for today: first should be Must do and second should be Should do.',
+    label: 'Add Must & Should tasks for today',
+    prompt: 'Add 2 tasks for today: first should be Must do and second should be Should do.',
     icon: Sparkles,
   },
   {
-    title: 'Break down a task into 4 subtasks',
-    description: 'Split complex tasks across days 2 to 5',
-    prompt: 'Break my core priority task into 4 subtasks scheduled across days 2 to 5.',
+    label: 'What tasks do I have today?',
+    prompt: 'What tasks do I have right now?',
+    icon: ListChecks,
+  },
+  {
+    label: 'Draft next 7-day Quarter plan',
+    prompt: 'Plan the upcoming Quarter with core deliverables and subtasks.',
     icon: Layers,
   },
   {
-    title: 'Draft next 7-day Quarter Plan',
-    description: 'Design 7-day quarter deliverables and subtasks with AI',
-    prompt: 'Plan the upcoming Quarter with core deliverables and subtasks.',
-    icon: Activity,
-  },
-  {
-    title: 'Salvage my last hour today',
-    description: 'Feeling behind? Get a focused mini-task to close the day',
-    prompt: "I'm feeling behind today with limited time left—suggest a realistic mini task so I don't end the day with guilt.",
-    icon: Sparkles,
+    label: 'Start a 60m focus session',
+    prompt: 'Start a 60 min focus session',
+    icon: Flame,
   },
 ];
 
@@ -77,6 +73,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const skipNextFetchRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback((smooth = true) => {
     if (messagesEndRef.current) {
@@ -90,7 +87,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
     if (!scrollContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
     const distanceToBottom = scrollHeight - scrollTop - clientHeight;
-    const near = distanceToBottom < 80;
+    const near = distanceToBottom < 90;
     setIsNearBottom(near);
     setShowScrollBottom(!near);
   };
@@ -101,16 +98,20 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
     }
   }, [messages, isNearBottom, scrollToBottom]);
 
-  // Load active conversation messages
+  // Load active conversation messages when user switches threads
   useEffect(() => {
     let isMounted = true;
     if (activeConversationId) {
+      if (skipNextFetchRef.current === activeConversationId) {
+        skipNextFetchRef.current = null;
+        return;
+      }
       api
         .getConversationById(activeConversationId)
         .then((doc) => {
           if (isMounted) {
             setMessages(doc.messages || []);
-            setTimeout(() => scrollToBottom(false), 50);
+            setTimeout(() => scrollToBottom(false), 40);
           }
         })
         .catch(() => {
@@ -128,14 +129,13 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
   useEffect(() => {
     if (prefillPrompt) {
       setInput(prefillPrompt);
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-      }
+      textareaRef.current?.focus();
     }
   }, [prefillPrompt]);
 
   const handleNewChat = () => {
     playEnter();
+    skipNextFetchRef.current = null;
     setActiveConversationId('');
     setMessages([]);
     setStreamStatus(null);
@@ -169,6 +169,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
       role: 'user',
       content,
       card_type: 'text',
+      card_data: null,
       created_at: new Date().toISOString(),
     };
 
@@ -184,7 +185,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
 
     setMessages((prev) => [...prev, tempUserMsg, initialAssistantMsg]);
     setLoading(true);
-    setStreamStatus('Routing request...');
+    setStreamStatus('Thinking...');
     setIsNearBottom(true);
 
     const controller = new AbortController();
@@ -220,16 +221,17 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
         for (const block of blocks) {
           if (!block.trim()) continue;
           let eventType = 'message';
-          let dataStr = '';
+          let dataLines: string[] = [];
 
           const lines = block.split('\n');
           for (const line of lines) {
             if (line.startsWith('event: ')) {
-              eventType = line.substring(7).trim();
+              eventType = line.slice(7).trim();
             } else if (line.startsWith('data: ')) {
-              dataStr = line.substring(6).trim();
+              dataLines.push(line.slice(6));
             }
           }
+          const dataStr = dataLines.join('\n');
 
           if (eventType === 'status') {
             try {
@@ -240,24 +242,19 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
             }
           } else if (eventType === 'delta') {
             setStreamStatus(null);
+            let token = dataStr;
             try {
-              const parsedToken = JSON.parse(dataStr);
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.message_id === tempAssistantMsgId
-                    ? { ...m, content: m.content + parsedToken }
-                    : m
-                )
-              );
+              token = JSON.parse(dataStr);
             } catch {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.message_id === tempAssistantMsgId
-                    ? { ...m, content: m.content + dataStr }
-                    : m
-                )
-              );
+              // Keep raw fallback
             }
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.message_id === tempAssistantMsgId
+                  ? { ...m, content: m.content + token }
+                  : m
+              )
+            );
           } else if (eventType === 'card') {
             try {
               const cardPayload = JSON.parse(dataStr);
@@ -266,6 +263,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
                   m.message_id === tempAssistantMsgId
                     ? {
                         ...m,
+                        message_id: cardPayload.message_id || m.message_id,
                         card_type: cardPayload.card_type,
                         card_data: cardPayload.card_data,
                       }
@@ -286,7 +284,17 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
             setStreamStatus(null);
             try {
               const donePayload = JSON.parse(dataStr);
+              if (donePayload.message_id) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.message_id === tempAssistantMsgId
+                      ? { ...m, message_id: donePayload.message_id }
+                      : m
+                  )
+                );
+              }
               if (donePayload.session_id && !activeConversationId) {
+                skipNextFetchRef.current = donePayload.session_id;
                 setActiveConversationId(donePayload.session_id);
               }
             } catch {}
@@ -308,9 +316,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
             m.message_id === tempAssistantMsgId
               ? {
                   ...m,
-                  content:
-                    m.content ||
-                    'Unable to reach Cherry AI backend service. Please verify server connection.',
+                  content: m.content || 'Unable to reach Cherry backend.',
                 }
               : m
           )
@@ -339,28 +345,33 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
   };
 
   const activeChat = conversations.find((c) => c.conversation_id === activeConversationId);
-  const activeTitle = activeChat?.title || (messages.length > 0 ? 'Conversation' : 'New Chat');
+  const activeTitle = activeChat?.title || 'Cherry';
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 select-text relative">
-      {/* Drawer Top Header (only in drawer mode) */}
+    <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 select-text relative">
+      {/* Minimal Floating Drawer Bar */}
       {isDrawerMode && (
-        <div className="h-12 px-4 border-b border-black/5 dark:border-white/10 flex items-center justify-between shrink-0 bg-stone-50/50 dark:bg-[#181915]/50">
+        <div className="h-12 px-4 flex items-center justify-between shrink-0 z-10">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-cherry-500/10 text-cherry-600 dark:text-cherry-300">
-              <Sparkles className="h-3.5 w-3.5" />
-            </div>
-            <h2 className="text-xs font-bold text-stone-800 dark:text-stone-200 truncate">
-              {activeTitle}
-            </h2>
+            <img
+              src="/icons/cherry-icon.svg"
+              alt="Cherry"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = '/cherry-icon.svg';
+              }}
+              className="h-4 w-4 object-contain shrink-0"
+            />
+            <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 truncate">
+              {activeConversationId ? activeTitle : 'Cherry'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={handleNewChat}
-              className="flex items-center gap-1 px-3 py-1 text-2xs font-semibold rounded-full bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 transition"
-              title="New Conversation"
+              className="flex items-center gap-1 px-2.5 py-1 text-2xs font-semibold rounded-full bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.12] text-stone-700 dark:text-stone-300 transition"
+              title="New chat"
             >
               <Plus className="h-3 w-3" />
               <span>New</span>
@@ -370,8 +381,8 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
               <button
                 type="button"
                 onClick={onExpandToFullView}
-                className="p-1.5 rounded-lg text-stone-500 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/50 dark:hover:bg-stone-800 transition"
-                title="Expand to Full View (/chat)"
+                className="p-1.5 rounded-full text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition"
+                title="Open full view"
               >
                 <Maximize2 className="h-3.5 w-3.5" />
               </button>
@@ -381,8 +392,8 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition"
-                title="Close Drawer"
+                className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition"
+                title="Close"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -391,90 +402,101 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
         </div>
       )}
 
-      {/* Messages Stream */}
+      {/* Centered Editorial Message Stream */}
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3"
+        className="flex-1 overflow-y-auto"
       >
-        {messages.length === 0 ? (
-          <div className="max-w-md mx-auto py-6 space-y-4 animate-fade-in text-center">
-            <div className="w-10 h-10 rounded-2xl bg-cherry-500/10 border border-cherry-500/20 mx-auto flex items-center justify-center p-2 shadow-2xs">
-              <img
-                src="/icons/cherry-icon.svg"
-                alt="Cherry"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/cherry-icon.svg';
-                }}
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold font-sans text-stone-900 dark:text-white">
-                Cherry AI
-              </h3>
-              <p className="text-2xs text-stone-500 dark:text-stone-400 mt-0.5">
-                Fast, structured task planning and Quarter management
-              </p>
-            </div>
+        <div
+          className={`mx-auto w-full min-h-full flex flex-col ${
+            isDrawerMode ? 'px-4 pt-2 pb-28' : 'max-w-3xl px-4 sm:px-6 pt-2 pb-32'
+          }`}
+        >
+          {messages.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center py-8 space-y-6 animate-fade-in">
+              <div className="flex flex-col items-center gap-2.5 text-center">
+                <img
+                  src="/icons/cherry-icon.svg"
+                  alt="Cherry"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = '/cherry-icon.svg';
+                  }}
+                  className="w-8 h-8 object-contain"
+                />
+                <h2 className="text-base sm:text-lg font-bold tracking-tight text-stone-900 dark:text-stone-100">
+                  What are we working on?
+                </h2>
+              </div>
 
-            <div className="grid grid-cols-1 gap-2 text-left pt-1">
-              {STARTER_PROMPTS.map((p, idx) => {
-                const Icon = p.icon;
+              <div
+                className={`grid gap-2 w-full ${
+                  isDrawerMode ? 'grid-cols-1 max-w-sm' : 'grid-cols-1 sm:grid-cols-2 max-w-xl'
+                }`}
+              >
+                {STARTER_PROMPTS.map((p, idx) => {
+                  const Icon = p.icon;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSend(p.prompt)}
+                      className="btn-interactive flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl glass-card border border-black/[0.06] dark:border-white/[0.08] hover:border-cherry-500/35 text-left text-xs font-medium text-stone-700 dark:text-stone-300 hover:text-stone-950 dark:hover:text-white group"
+                    >
+                      <Icon className="w-3.5 h-3.5 text-cherry-flesh shrink-0 opacity-80 group-hover:opacity-100 transition-opacity" />
+                      <span className="truncate">{p.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-5 pt-2">
+              {messages.map((m, idx) => {
+                const isLastAssistant =
+                  m.role === 'assistant' && idx === messages.length - 1;
                 return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleSend(p.prompt)}
-                    className="p-3 rounded-2xl bg-white/70 dark:bg-stone-900/50 border border-black/[0.06] dark:border-white/[0.08] hover:border-cherry-500/40 dark:hover:border-cherry-500/40 hover:bg-white dark:hover:bg-stone-900/80 transition text-left space-y-1 hover:scale-[1.01] shadow-2xs group"
-                  >
-                    <div className="flex items-center gap-2 text-xs font-semibold text-stone-900 dark:text-white group-hover:text-cherry-flesh transition-colors">
-                      <Icon className="w-3.5 h-3.5 text-cherry-flesh shrink-0" />
-                      <span>{p.title}</span>
-                    </div>
-                    <p className="text-2xs text-stone-500 dark:text-stone-400">
-                      {p.description}
-                    </p>
-                  </button>
+                  <ChatMessage
+                    key={m.message_id || idx}
+                    message={m}
+                    isStreaming={loading && isLastAssistant}
+                    streamStatus={isLastAssistant ? streamStatus : null}
+                    onRefresh={refreshEcosystem}
+                  />
                 );
               })}
             </div>
-          </div>
-        ) : (
-          messages.map((m, idx) => (
-            <ChatMessage
-              key={m.message_id || idx}
-              message={m}
-              onRefresh={refreshEcosystem}
-            />
-          ))
-        )}
+          )}
 
-        {/* Subtle Inline Status Step Indicator */}
-        {streamStatus && (
-          <div className="flex items-center gap-2 py-1 px-3 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-500 text-2xs font-mono w-fit animate-pulse">
-            <Loader2 className="h-3 w-3 animate-spin text-cherry-flesh" />
-            <span>{streamStatus}</span>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      {/* Scroll To Bottom Floating Pill */}
+      {/* Centered Frosted Scroll-to-Bottom Pill */}
       {showScrollBottom && messages.length > 0 && (
         <button
           type="button"
           onClick={() => scrollToBottom(true)}
-          className="absolute bottom-20 right-5 p-2 rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-lift hover:scale-105 transition z-10"
+          className="glass-capsule absolute bottom-20 left-1/2 -translate-x-1/2 h-8 w-8 rounded-full flex items-center justify-center text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:scale-105 transition z-20 animate-scale-in"
+          title="Jump to latest"
         >
-          <ArrowDown className="w-4 h-4" />
+          <ArrowDown className="w-3.5 h-3.5" />
         </button>
       )}
 
-      {/* Input Composer */}
-      <div className="p-3 sm:p-3.5 border-t border-black/5 dark:border-white/10 bg-white/70 dark:bg-[#141512]/70 backdrop-blur-md">
-        <div className="flex items-end gap-2 p-1.5 rounded-2xl bg-stone-100 dark:bg-stone-900 border border-stone-200/60 dark:border-stone-800 focus-within:ring-2 focus-within:ring-cherry-500">
+      {/* Floating Glass Input Dock */}
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 pt-8 ${
+          isDrawerMode
+            ? 'px-3 pb-3 bg-gradient-to-t from-[#FAF6F6] via-[#FAF6F6]/85 to-transparent dark:from-[#161714] dark:via-[#161714]/85'
+            : 'px-3 sm:px-6 pb-4 bg-gradient-to-t from-[#FAF6F6]/95 via-[#FAF6F6]/75 to-transparent dark:from-[#141212]/95 dark:via-[#141212]/75'
+        }`}
+      >
+        <div
+          className={`pointer-events-auto mx-auto w-full ${
+            isDrawerMode ? '' : 'max-w-3xl'
+          } flex items-end gap-2 px-3.5 py-2 rounded-[22px] bg-white/80 dark:bg-[#1E1F1B]/85 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.10] shadow-floating focus-within:border-cherry-500/45 transition-all duration-200`}
+        >
           <textarea
             ref={textareaRef}
             data-chat-input="true"
@@ -482,28 +504,29 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             disabled={loading}
-            placeholder="Ask Cherry to plan quarter, break down tasks, or chat..."
+            placeholder="Message Cherry..."
             rows={1}
-            className="flex-1 bg-transparent px-3 py-1.5 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none resize-none max-h-36"
+            className="flex-1 bg-transparent py-1 text-[13px] sm:text-sm text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none resize-none max-h-36 leading-relaxed"
           />
 
           {loading ? (
             <button
               type="button"
               onClick={handleStop}
-              className="p-2 rounded-xl bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:text-red-500 transition"
-              title="Stop generation"
+              className="h-8 w-8 rounded-full flex items-center justify-center bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:opacity-85 active:scale-95 transition shrink-0"
+              title="Stop"
             >
-              <Square className="w-3.5 h-3.5 fill-current" />
+              <Square className="w-3 h-3 fill-current" />
             </button>
           ) : (
             <button
               type="button"
               onClick={() => handleSend()}
               disabled={!input.trim()}
-              className="p-2 rounded-xl bg-cherry-flesh hover:bg-cherry-700 text-white disabled:opacity-40 transition shadow-xs"
+              className="h-8 w-8 rounded-full flex items-center justify-center bg-cherry-flesh hover:bg-cherry-600 text-white disabled:bg-stone-200 dark:disabled:bg-stone-800 disabled:text-stone-400 dark:disabled:text-stone-600 transition-all duration-150 hover:scale-105 active:scale-95 shrink-0"
+              title="Send"
             >
-              <Send className="w-3.5 h-3.5" />
+              <ArrowUp className="w-4 h-4 stroke-[2.25]" />
             </button>
           )}
         </div>

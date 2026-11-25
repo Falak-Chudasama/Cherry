@@ -150,3 +150,101 @@ async def test_task_list_sanitizer_and_batch_creation():
         assert len(data["tasks"]) == 2
         assert data["tasks"][0]["tier"] == "Must Do"
 
+
+@pytest.mark.asyncio
+async def test_agent_task_mutation_query_and_chat_persistence():
+    from app.ai.services.action_executor import stage_quick_action, execute_staged_action
+    from app.ai.services.query_executor import execute_db_query
+    from app.services.task_service import task_service
+    from app.core import calendar as cal
+
+    today_d = cal.today_local()
+    period_type, period_id = cal.get_period_for_day(today_d)
+    created = await task_service.create_task(
+        period_id=period_id,
+        period_type=period_type,
+        title="Amazon Assessment",
+        tier="Must Do",
+        status="Not started",
+    )
+
+    # 1. Stage marking existing task as Done (no DB mutation yet)
+    staged = await stage_quick_action("Mark Amazon Assessment as done")
+    assert staged["needs_clarification"] is False
+    assert staged["actions"][0]["action_type"] == "update_task_status"
+    assert staged["actions"][0]["parameters"]["status"] == "Done"
+
+    # Persist chat message in db.chats and execute via /api/chat/actions/execute
+    db = get_db()
+    await db.chats.insert_one({
+        "session_id": "test-sess-actions",
+        "application": "cherry",
+        "title": "Test Actions",
+        "messages": [
+            {
+                "message_id": "msg-1",
+                "role": "assistant",
+                "content": "Ready",
+                "card_type": "action_confirm",
+                "card_data": staged,
+            }
+        ],
+    })
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post("/api/chat/actions/execute", json={
+            "action_id": staged["action_id"],
+            "action_data": staged,
+            "session_id": "test-sess-actions",
+            "message_id": "msg-1",
+        })
+        assert r.status_code == 200
+        assert r.json()["success"] is True
+
+    # Verify task status changed and db.chats persisted card_data.status
+    updated_task = await db.tasks.find_one({"task_id": created.task_id})
+    assert updated_task["status"] == "Done"
+    chat_doc = await db.chats.find_one({"session_id": "test-sess-actions"})
+    assert chat_doc["messages"][0]["card_data"]["status"] == "executed"
+
+    # 2. Query tasks in natural language
+    q_res = await execute_db_query("What tasks do I have right now?")
+    assert q_res["result_count"] >= 1
+    assert any(t["title"] == "Amazon Assessment" for t in q_res["results"])
+
+    # 3. Direct stage + execute delete_task
+    staged_del = await stage_quick_action("Delete task Amazon Assessment")
+    assert staged_del["needs_clarification"] is False
+    if staged_del["actions"][0]["action_type"] == "delete_task":
+        del_res = await execute_staged_action(staged_del)
+        assert del_res["success"] is True
+        assert await db.tasks.find_one({"task_id": created.task_id}) is None
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_sse_query_with_datetimes():
+    from app.services.task_service import task_service
+    from app.core import calendar as cal
+
+    today_d = cal.today_local()
+    period_type, period_id = cal.get_period_for_day(today_d)
+    await task_service.create_task(
+        period_id=period_id,
+        period_type=period_type,
+        title="SSE Verification Task",
+        tier="Must Do",
+        status="Not started",
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post("/api/chat/stream", json={"content": "What tasks do I have right now?"})
+        assert r.status_code == 200
+        body = r.text
+        assert "event: card" in body
+        assert "SSE Verification Task" in body
+        assert "event: done" in body
+
+
+
